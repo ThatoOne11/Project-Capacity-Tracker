@@ -1,18 +1,7 @@
 -- 1. Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Audit Log
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    source TEXT DEFAULT 'clockify',
-    event_type TEXT,
-    status TEXT DEFAULT 'PENDING',
-    payload JSONB NOT NULL,
-    error_message TEXT
-);
-
--- 3. Reference Tables
+-- 2. Reference Tables
 CREATE TABLE IF NOT EXISTS clockify_clients (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     clockify_id TEXT UNIQUE NOT NULL,
@@ -36,7 +25,7 @@ CREATE TABLE IF NOT EXISTS clockify_projects (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Time Entries
+-- 3. Time Entries
 CREATE TABLE IF NOT EXISTS clockify_time_entries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     clockify_id TEXT UNIQUE NOT NULL,
@@ -46,7 +35,6 @@ CREATE TABLE IF NOT EXISTS clockify_time_entries (
     duration INTERVAL,
     user_id UUID NOT NULL REFERENCES clockify_users(id),
     project_id UUID REFERENCES clockify_projects(id) ON DELETE SET NULL,
-    client_id UUID REFERENCES clockify_clients(id) ON DELETE SET NULL,
     deleted_at TIMESTAMPTZ DEFAULT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -56,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_time_entries_user ON clockify_time_entries(user_i
 CREATE INDEX IF NOT EXISTS idx_time_entries_project ON clockify_time_entries(project_id);
 CREATE INDEX IF NOT EXISTS idx_time_entries_start_time ON clockify_time_entries(start_time);
 
--- 5. Reporting View
+-- 4. Reporting View
 CREATE OR REPLACE VIEW monthly_aggregates_view  with (security_invoker = on) AS
 SELECT
     u.name AS user_name,
@@ -72,15 +60,13 @@ GROUP BY
     p.name, 
     TO_CHAR(DATE_TRUNC('month', t.start_time), 'FMMonth YYYY');
 
--- 6. RLS Policies
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+-- 5. RLS Policies
 ALTER TABLE clockify_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clockify_clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clockify_projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clockify_time_entries ENABLE ROW LEVEL SECURITY;
 
 -- Allow the Service Role (Edge Functions) to do everything
-CREATE POLICY "Service Role Full Access" ON audit_logs FOR ALL TO service_role USING (true);
 CREATE POLICY "Service Role Full Access" ON clockify_users FOR ALL TO service_role USING (true);
 CREATE POLICY "Service Role Full Access" ON clockify_clients FOR ALL TO service_role USING (true);
 CREATE POLICY "Service Role Full Access" ON clockify_projects FOR ALL TO service_role USING (true);

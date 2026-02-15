@@ -1,21 +1,19 @@
--- 1. Enable necessary extensions
+-- 1. Enable extensions
 create extension if not exists pg_net;
 create extension if not exists pg_cron;
 
--- 2. Schedule the Cron Job using Dynamic Secrets Lookup
+-- 2. Schedule the Cron Job
 select cron.schedule(
   'clockify-incremental-poll', 
   '*/15 * * * *',              
   $$
   select net.http_post(
-      -- A. Fetch the URL dynamically from Vault
       url:=(
           select decrypted_secret 
           from vault.decrypted_secrets 
           where name = 'edge_function_url' 
           limit 1
       ),
-      -- B. Fetch the Key dynamically and build headers
       headers:=jsonb_build_object(
           'Content-Type', 'application/json',
           'Authorization', 'Bearer ' || (
@@ -24,7 +22,9 @@ select cron.schedule(
               where name = 'service_role_key' 
               limit 1
           )
-      )
+      ),
+      body := '{}'::jsonb,
+      timeout_milliseconds := 60000 -- Set 5 minute timeout so it doesn't fail.
   ) as request_id;
   $$
 );
