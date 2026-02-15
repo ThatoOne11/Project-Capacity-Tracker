@@ -6,15 +6,13 @@ A robust, automated synchronization pipeline that pulls time-tracking data from 
 
 1. **Source**: Clockify API (Time Entries, Users, Projects, Clients).
 2. **Processing**: Supabase Edge Functions (Deno).
+    - **Sync Service**: Incremental 15-minute syncing.
+    - **Backfill Service**: Historical data import.
+    - **Airtable Service**: Pushes aggregated views.
 
-- **Sync Service**: Incremental 15-minute polling.
-- **Backfill Service**: Historical data import.
-- **Airtable Service**: Pushes aggregated views.
-
-3. **Storage**: Supabase (PostgreSQL).
-
-- **Raw Data**: Tables for users, projects, and time entries.
-- **Logic**: Views for aggregation and Soft-Deletes for data integrity.
+3. **Storage**: Supabase.
+    - **Raw Data**: Tables for users, projects, and time entries.
+    - **Logic**: Views for aggregation and Soft-Deletes for data integrity.
 
 4. **Automation**: `pg_cron` + `pg_net` triggers the Edge Functions every 15 minutes.
 5. **Security**: All API keys stored in **Supabase Vault**; Row Level Security (RLS) enabled.
@@ -30,8 +28,8 @@ cd project-capacity-tracker
 
 ### 2. Environment Variables
 
-Create a `.env` file in `supabase/functions/` (or root) with the following keys.
-_Note: These are needed for local testing via `deno run` or manual invocation._
+Create a `.env` file in `supabase/functions/` with the following keys.
+_(These are needed for local testing.)_
 
 ```env
 SUPABASE_URL="http://127.0.0.1:54321"
@@ -47,7 +45,7 @@ AIRTABLE_TABLE_ID="<your_table_id>"
 
 ### 3. Start Local Supabase
 
-This spins up the database, studio, and edge function runtime.
+This boots up the database, studio, and edge function runtime.
 
 ```bash
 supabase start
@@ -65,7 +63,7 @@ supabase db reset
 
 The database Cron job cannot read your `.env` file. You must add secrets to the **Supabase Vault** so the database can authenticate with the Edge Functions.
 
-Run this SQL in the **Supabase Dashboard SQL Editor** (Local: `http://127.0.0.1:54323`):
+Run this SQL in your **Local Supabase Dashboard SQL Editor**:
 
 ```sql
 -- 1. The URL the database should hit (Internal Docker URL for local)
@@ -74,7 +72,7 @@ select vault.create_secret(
   'edge_function_url'
 );
 
--- 2. The Service Role Key (Found in output of `supabase start`)
+-- 2. The Service Role Key (Found in output of `supabase status`)
 select vault.create_secret(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
   'service_role_key'
