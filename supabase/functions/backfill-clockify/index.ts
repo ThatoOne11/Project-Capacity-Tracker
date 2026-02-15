@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../_shared/services/clockify.service.ts";
-import { SupabaseRepository } from "../_shared/repo/supabase.repo.ts";
+import { ReferenceRepository } from "../_shared/repo/reference.repo.ts";
+import { TimeEntryRepository } from "../_shared/repo/time-entry.repo.ts";
 import { BackfillService } from "./services/backfill.service.ts";
 import { BackfillController } from "./controller/backfill.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
@@ -15,10 +16,16 @@ Deno.serve(async (req: Request) => {
     CLOCKIFY_CONFIG.workspaceId,
   );
 
-  const repo = new SupabaseRepository(supabase);
+  const refRepo = new ReferenceRepository(supabase);
+  const entryRepo = new TimeEntryRepository(supabase);
 
   // 3. Initialize Domain Logic (Dependency Injection)
-  const backfillService = new BackfillService(supabase, clockifyService, repo);
+  const backfillService = new BackfillService(
+    supabase,
+    clockifyService,
+    refRepo,
+    entryRepo,
+  );
   const controller = new BackfillController(backfillService);
 
   // 4. Handle Request

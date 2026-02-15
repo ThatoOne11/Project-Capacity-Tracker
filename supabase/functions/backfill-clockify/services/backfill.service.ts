@@ -1,20 +1,21 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
-import { SupabaseRepository } from "../../_shared/repo/supabase.repo.ts";
+import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
+import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
 
 export class BackfillService {
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly clockify: ClockifyService,
-    private readonly repo: SupabaseRepository,
+    private readonly refRepo: ReferenceRepository,
+    private readonly entryRepo: TimeEntryRepository,
   ) {}
 
   // 1: Syncs Users, Clients, and Projects to ensure foreign keys exist
   async syncReferenceData(): Promise<void> {
-    console.log("Syncing Reference Data...");
-    await this.repo.upsertUsers(await this.clockify.fetchUsers());
-    await this.repo.upsertClients(await this.clockify.fetchClients());
-    await this.repo.upsertProjects(await this.clockify.fetchProjects());
+    await this.refRepo.upsertUsers(await this.clockify.fetchUsers());
+    await this.refRepo.upsertClients(await this.clockify.fetchClients());
+    await this.refRepo.upsertProjects(await this.clockify.fetchProjects());
   }
 
   //2: Pagination and user iteration loop
@@ -48,7 +49,6 @@ export class BackfillService {
 
       // C. Handle Pagination
       while (hasMore) {
-        // Note: Backfill uses the standard fetchUserTimeEntries (with page number)
         const entries = await this.clockify.fetchUserTimeEntries(
           user.clockify_id,
           startDate,
@@ -60,7 +60,7 @@ export class BackfillService {
           break;
         }
 
-        const result = await this.repo.processTimeEntriesBatch(entries);
+        const result = await this.entryRepo.processBatch(entries);
         totalSynced += result.synced;
 
         page++;

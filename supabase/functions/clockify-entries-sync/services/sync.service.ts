@@ -1,12 +1,12 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
-import { SupabaseRepository } from "../../_shared/repo/supabase.repo.ts";
+import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
 
 export class SyncService {
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly clockify: ClockifyService,
-    private readonly repo: SupabaseRepository,
+    private readonly repo: TimeEntryRepository,
   ) {}
 
   async syncRecentData(): Promise<number> {

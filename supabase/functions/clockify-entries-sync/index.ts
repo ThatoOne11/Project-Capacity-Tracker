@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../_shared/services/clockify.service.ts";
-import { SupabaseRepository } from "../_shared/repo/supabase.repo.ts";
+import { TimeEntryRepository } from "../_shared/repo/time-entry.repo.ts";
 import { SyncService } from "./services/sync.service.ts";
 import { SyncController } from "./controllers/sync.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
@@ -15,10 +15,10 @@ Deno.serve(async (_req) => {
     CLOCKIFY_CONFIG.workspaceId,
   );
 
-  const repo = new SupabaseRepository(supabase);
+  const timeEntryRepo = new TimeEntryRepository(supabase);
 
   // Domain-specific service & controller
-  const syncService = new SyncService(supabase, clockifyService, repo);
+  const syncService = new SyncService(supabase, clockifyService, timeEntryRepo);
   const controller = new SyncController(syncService);
 
   // 3. Execute
