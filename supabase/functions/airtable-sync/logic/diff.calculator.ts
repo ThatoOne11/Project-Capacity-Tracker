@@ -19,12 +19,18 @@ export class AirtableDiffCalculator {
 
     // 1. Map for fast lookup
     const airtableMap = new Map<string, AirtableRecord>(
-      destinationRecords.map((rec) => [rec.fields.Name.trim(), rec]),
+      destinationRecords.map((rec) => [
+        rec.fields.Name.trim().toLowerCase(),
+        rec,
+      ]),
     );
 
     // 2. Forward Pass: Supabase -> Airtable (Updates & Inserts)
     for (const row of sourceRows) {
-      const lookupKey = `${row.user_name} - ${row.project_name} - ${row.month}`;
+      const lookupKey = `${row.user_name} - ${row.project_name} - ${row.month}`
+        .trim()
+        .toLowerCase();
+
       const match = airtableMap.get(lookupKey);
 
       if (!match) {
