@@ -3,24 +3,18 @@ import { ClockifyService } from "../_shared/services/clockify.service.ts";
 import { SupabaseRepository } from "../_shared/repo/supabase.repo.ts";
 import { SyncService } from "./services/sync.service.ts";
 import { SyncController } from "./controllers/sync.controller.ts";
-
-// 1. Configuration
-const ENV = {
-  CLOCKIFY_KEY: Deno.env.get("CLOCKIFY_KEY")!,
-  WORKSPACE_ID: Deno.env.get("WORKSPACE_ID")!,
-  SUPABASE_URL: Deno.env.get("SUPABASE_URL")!,
-  SUPABASE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-};
+import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 
 Deno.serve(async (_req) => {
-  // 2. Dependency Injection (Wiring)
-  const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_KEY);
+  // 1. Initialize Clients
+  const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
 
-  // Shared services/repos
+  // 2. Initialize Shared Modules
   const clockifyService = new ClockifyService(
-    ENV.CLOCKIFY_KEY,
-    ENV.WORKSPACE_ID,
+    CLOCKIFY_CONFIG.apiKey,
+    CLOCKIFY_CONFIG.workspaceId,
   );
+
   const repo = new SupabaseRepository(supabase);
 
   // Domain-specific service & controller

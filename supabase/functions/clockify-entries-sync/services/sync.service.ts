@@ -65,7 +65,7 @@ export class SyncService {
 
   // Triggers the Airtable sync function
   async triggerAirtableSync(): Promise<void> {
-    console.log("🚀 Triggering Airtable Sync...");
+    console.log("Triggering Airtable Sync...");
     await this.supabase.functions.invoke("airtable-sync", {
       method: "POST",
     });

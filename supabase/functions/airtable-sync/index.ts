@@ -1,23 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { AirtableService } from "./services/airtable.service.ts";
 import { AggregateRow } from "./types/types.ts";
-import { SyncEngine } from "./engine/sync.engine.ts";
-
-const ENV = {
-  AIRTABLE_PAT: Deno.env.get("AIRTABLE_PAT")!,
-  AIRTABLE_BASE_ID: Deno.env.get("AIRTABLE_BASE_ID")!,
-  AIRTABLE_TABLE_ID: Deno.env.get("AIRTABLE_TABLE_ID")!,
-  SUPABASE_URL: Deno.env.get("SUPABASE_URL")!,
-  SUPABASE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-};
+import { AirtableDiffCalculator } from "./logic/diff.calculator.ts";
+import { AIRTABLE_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 
 Deno.serve(async (_req: Request) => {
   try {
-    const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_KEY);
+    const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
     const airtable = new AirtableService(
-      ENV.AIRTABLE_PAT,
-      ENV.AIRTABLE_BASE_ID,
-      ENV.AIRTABLE_TABLE_ID,
+      AIRTABLE_CONFIG.pat,
+      AIRTABLE_CONFIG.baseId,
+      AIRTABLE_CONFIG.tableId,
     );
 
     // 1. Fetch Supabase View Data
@@ -31,7 +24,7 @@ Deno.serve(async (_req: Request) => {
     const destinationRecords = await airtable.fetchRecords();
 
     // 3. Process Differences
-    const { updates, stats } = SyncEngine.prepareUpdates(
+    const { updates, stats } = AirtableDiffCalculator.calculateDiffs(
       sourceData as AggregateRow[],
       destinationRecords,
     );

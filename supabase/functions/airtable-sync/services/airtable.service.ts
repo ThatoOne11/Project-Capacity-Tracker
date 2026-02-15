@@ -20,12 +20,13 @@ export class AirtableService {
     let offset: string | undefined = undefined;
 
     do {
-      let url =
-        `${this.baseUrl}/${this.baseId}/${this.tableId}?fields%5B%5D=Name&fields%5B%5D=Actual+Hours`;
+      const params = new URLSearchParams();
+      params.append("fields[]", "Name");
+      params.append("fields[]", "Actual Hours");
+      if (offset) params.append("offset", offset);
 
-      if (offset) {
-        url += `&offset=${offset}`;
-      }
+      const url =
+        `${this.baseUrl}/${this.baseId}/${this.tableId}?${params.toString()}`;
 
       const res = await fetch(url, { headers: this.headers });
 
@@ -34,7 +35,6 @@ export class AirtableService {
       }
 
       const data = await res.json();
-
       if (data.records) {
         allRecords.push(...(data.records as AirtableRecord[]));
       }
@@ -42,9 +42,9 @@ export class AirtableService {
       offset = data.offset;
 
       if (offset) {
-        console.log(
-          `   ..found ${allRecords.length} records, fetching next page...`,
-        );
+        // 2. Small pause to be nice to the API
+        await new Promise((r) => setTimeout(r, 200));
+        console.log(`   ..fetched ${allRecords.length} records so far...`);
       }
     } while (offset);
 
@@ -60,17 +60,28 @@ export class AirtableService {
     const url = `${this.baseUrl}/${this.baseId}/${this.tableId}`;
     console.log(`Pushing ${updates.length} updates to Airtable...`);
 
+    // Airtable limit: 10 records per request
     for (let i = 0; i < updates.length; i += 10) {
       const chunk = updates.slice(i, i + 10);
-      const res = await fetch(url, {
-        method: "PATCH",
-        headers: this.headers,
-        body: JSON.stringify({ records: chunk }),
-      });
 
-      if (!res.ok) {
-        console.error(`Batch Update Failed: ${await res.text()}`);
+      try {
+        const res = await fetch(url, {
+          method: "PATCH",
+          headers: this.headers,
+          body: JSON.stringify({ records: chunk }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Batch failed: ${await res.text()}`);
+        }
+
+        // 3. Sleep 350ms between batches to avoid 429 Rate Limits (Ensures we never exceed ~3 requests/second)
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      } catch (err) {
+        console.error(`Batch ${i / 10 + 1} Error:`, err);
+        throw err; // whole sync fails on one batch error
       }
     }
+    console.log("Airtable updates complete.");
   }
 }
