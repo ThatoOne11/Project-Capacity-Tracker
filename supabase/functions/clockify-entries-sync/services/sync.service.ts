@@ -9,13 +9,6 @@ export class SyncService {
     private readonly repo: SupabaseRepository,
   ) {}
 
-  /**
-   * Orchestrates the sync process:
-   * 1. Finds all users in DB
-   * 2. Polls Clockify for their last 24h of data
-   * 3. Upserts new data to DB
-   * 4. Triggers Airtable sync if needed
-   */
   async syncRecentData(): Promise<number> {
     // 1. Calculate Window (Last 24 Hours)
     const now = new Date();
@@ -25,7 +18,7 @@ export class SyncService {
     // 2. Fetch Target Users
     const { data: users, error } = await this.supabase
       .from("clockify_users")
-      .select("clockify_id, name");
+      .select("id, clockify_id, name");
 
     if (error || !users) throw new Error("Could not fetch users to poll");
 
@@ -33,7 +26,7 @@ export class SyncService {
       `Checking ${users.length} users for changes since: ${startTime}`,
     );
 
-    let totalSynced = 0;
+    let totalChanges = 0;
 
     // 3. Process Each User
     for (const user of users) {
@@ -43,15 +36,20 @@ export class SyncService {
           startTime,
         );
 
-        if (entries.length > 0) {
-          const res = await this.repo.processTimeEntriesBatch(entries);
-          totalSynced += res.synced;
+        // syncUserTimeWindow handles both upserts and soft-deleting removed entries
+        const { upserted, deleted } = await this.repo.syncUserTimeWindow(
+          user.id,
+          startTime,
+          entries,
+        );
 
-          if (res.synced > 0) {
-            console.log(
-              `   ${user.name}: Synced ${res.synced} new entries.`,
-            );
-          }
+        const userChanges = upserted + deleted;
+        totalChanges += userChanges;
+
+        if (userChanges > 0) {
+          console.log(
+            `   ${user.name}: ${upserted} synced, ${deleted} deleted.`,
+          );
         }
       } catch (err) {
         console.warn(
@@ -60,12 +58,12 @@ export class SyncService {
       }
     }
 
-    return totalSynced;
+    return totalChanges;
   }
 
   // Triggers the Airtable sync function
   async triggerAirtableSync(): Promise<void> {
-    console.log("Triggering Airtable Sync...");
+    console.log("Data changed. Triggering Airtable Sync...");
     await this.supabase.functions.invoke("airtable-sync", {
       method: "POST",
     });

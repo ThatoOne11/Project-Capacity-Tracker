@@ -43,4 +43,5 @@ export type TimeEntryRow = {
   duration: string | null;
   user_id: string;
   project_id: string | null;
+  deleted_at?: string | null;
 };

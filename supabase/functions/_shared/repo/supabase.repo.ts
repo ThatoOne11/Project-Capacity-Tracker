@@ -133,20 +133,56 @@ export class SupabaseRepository {
         project_id: entry.projectId
           ? (projectMap.get(entry.projectId) ?? null)
           : null,
+        deleted_at: null, // Explicitly ensure it's not marked deleted if API returns it
       });
     }
 
     // 3. Bulk Upsert
     if (rows.length > 0) {
-      const { error } = await this.client
-        .from("clockify_time_entries")
-        .upsert(rows, { onConflict: "clockify_id" });
-
+      const { error } = await this.client.from("clockify_time_entries").upsert(
+        rows,
+        { onConflict: "clockify_id" },
+      );
       if (error) {
         throw new Error(`DB Error (Time Entries Upsert): ${error.message}`);
       }
     }
 
     return { synced: rows.length, skipped: skippedCount };
+  }
+
+  async syncUserTimeWindow(
+    internalUserId: string,
+    startTime: string,
+    entries: ClockifyTimeEntry[],
+  ): Promise<{ upserted: number; deleted: number }> {
+    const validClockifyIds = entries.map((e) => e.id);
+
+    // 1. Process current entries (Updates/Inserts)
+    const { synced } = await this.processTimeEntriesBatch(entries);
+
+    // 2. Identify and Soft-Delete entries missing from the API response
+    let query = this.client
+      .from("clockify_time_entries")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("user_id", internalUserId)
+      .gte("start_time", startTime)
+      .is("deleted_at", null);
+
+    if (validClockifyIds.length > 0) {
+      query = query.not("clockify_id", "in", `(${validClockifyIds.join(",")})`);
+    }
+
+    // To get the count from an update, you call .select() AFTER the update
+    // We select 'id' just to have something to count
+    const { data, error } = await query.select("id");
+
+    if (error) {
+      console.error("Error processing deletions:", error.message);
+    }
+
+    const deletedCount = data ? data.length : 0;
+
+    return { upserted: synced, deleted: deletedCount };
   }
 }
