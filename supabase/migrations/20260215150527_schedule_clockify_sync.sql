@@ -4,7 +4,7 @@ create extension if not exists pg_cron;
 
 -- 2. Schedule the Cron Job
 select cron.schedule(
-  'clockify-incremental-poll', 
+  'sync-clockify-entries', 
   '*/15 * * * *',              
   $$
   select net.http_post(

@@ -1,16 +1,13 @@
--- 1. Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 2. Reference Tables
+-- 1. Reference Tables
 CREATE TABLE IF NOT EXISTS clockify_clients (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clockify_id TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS clockify_users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clockify_id TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     email TEXT,
@@ -18,16 +15,16 @@ CREATE TABLE IF NOT EXISTS clockify_users (
 );
 
 CREATE TABLE IF NOT EXISTS clockify_projects (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clockify_id TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     client_id UUID REFERENCES clockify_clients(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Time Entries
+-- 2. Time Entries
 CREATE TABLE IF NOT EXISTS clockify_time_entries (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clockify_id TEXT UNIQUE NOT NULL,
     description TEXT,
     start_time TIMESTAMPTZ NOT NULL,
@@ -44,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_time_entries_user ON clockify_time_entries(user_i
 CREATE INDEX IF NOT EXISTS idx_time_entries_project ON clockify_time_entries(project_id);
 CREATE INDEX IF NOT EXISTS idx_time_entries_start_time ON clockify_time_entries(start_time);
 
--- 4. Reporting View
+-- 3. Reporting View
 CREATE OR REPLACE VIEW monthly_aggregates_view  with (security_invoker = on) AS
 SELECT
     u.name AS user_name,
@@ -60,7 +57,7 @@ GROUP BY
     p.name, 
     TO_CHAR(DATE_TRUNC('month', t.start_time), 'FMMonth YYYY');
 
--- 5. RLS Policies
+-- 4. RLS Policies
 ALTER TABLE clockify_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clockify_clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clockify_projects ENABLE ROW LEVEL SECURITY;
