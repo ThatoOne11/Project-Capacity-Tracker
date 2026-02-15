@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ClockifyService } from "./services/clockify.service.ts";
-import { SupabaseRepository } from "./repo/supabase.repo.ts";
+import { ClockifyService } from "../_shared/services/clockify.service.ts";
+import { SupabaseRepository } from "../_shared/repo/supabase.repo.ts";
 
 const ENV = {
   CLOCKIFY_KEY: Deno.env.get("CLOCKIFY_KEY")!,

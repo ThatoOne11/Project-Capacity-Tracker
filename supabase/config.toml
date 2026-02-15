@@ -394,13 +394,24 @@ entrypoint = "./functions/backfill-clockify/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/backfill-clockify/*.html" ]
 
-[functions.sync-to-airtable]
+[functions.airtable-sync]
 enabled = true
 verify_jwt = true
-import_map = "./functions/sync-to-airtable/deno.json"
+import_map = "./functions/airtable-sync/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/sync-to-airtable/index.ts"
+entrypoint = "./functions/airtable-sync/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/sync-to-airtable/*.html" ]
+# static_files = [ "./functions/airtable-sync/*.html" ]
+
+[functions.clockify-entries-sync]
+enabled = true
+verify_jwt = true
+import_map = "./functions/clockify-entries-sync/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/clockify-entries-sync/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/clockify-entries-sync/*.html" ]

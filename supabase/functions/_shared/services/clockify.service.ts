@@ -3,7 +3,7 @@ import {
   ClockifyProject,
   ClockifyTimeEntry,
   ClockifyUser,
-} from "../types/types.ts";
+} from "../../_shared/types/types.ts";
 
 export class ClockifyService {
   private readonly baseUrl = "https://docs.clockify.me/api/v1";
@@ -38,6 +38,29 @@ export class ClockifyService {
     const query = `start=${start}&page=${page}&page-size=${pageSize}`;
     return this.get<ClockifyTimeEntry[]>(
       `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${query}`,
+    );
+  }
+
+  // Fetches entries within a time window for a specific user.
+  // Hydrated=true ensures we get project names even if they are new.
+  fetchRecentUserEntries(
+    userId: string,
+    start: string,
+    end?: string,
+  ): Promise<ClockifyTimeEntry[]> {
+    const params = new URLSearchParams({
+      start,
+      hydrated: "true",
+      "page-size": "200", // Large batch for recent changes
+    });
+
+    // Only add 'end' if it was actually passed in
+    if (end) {
+      params.append("end", end);
+    }
+
+    return this.get<ClockifyTimeEntry[]>(
+      `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
     );
   }
 
