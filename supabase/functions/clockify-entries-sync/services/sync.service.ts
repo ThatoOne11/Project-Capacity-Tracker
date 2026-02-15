@@ -1,6 +1,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
 import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
+import { SUPABASE_CONFIG } from "../../_shared/config.ts";
 
 export class SyncService {
   constructor(
@@ -64,8 +65,24 @@ export class SyncService {
   // Triggers the Airtable sync function
   async triggerAirtableSync(): Promise<void> {
     console.log("Data changed. Triggering Airtable Sync...");
-    await this.supabase.functions.invoke("airtable-sync", {
-      method: "POST",
-    });
+    const response = await fetch(
+      `${SUPABASE_CONFIG.url}/functions/v1/airtable-sync`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${SUPABASE_CONFIG.key}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      console.error(
+        `Failed to trigger Airtable sync: ${response.status} ${await response
+          .text()}`,
+      );
+    } else {
+      console.log("Airtable sync triggered successfully.");
+    }
   }
 }

@@ -18,7 +18,7 @@ export class BackfillService {
     await this.refRepo.upsertProjects(await this.clockify.fetchProjects());
   }
 
-  //2: Pagination and user iteration loop
+  // 2: Pagination and user iteration loop
   async syncTimeEntries(
     startDate: string,
     targetUserId?: string,
@@ -44,29 +44,38 @@ export class BackfillService {
     // B. Loop through every user
     for (const user of dbUsers) {
       console.log(`   👤 Processing: ${user.name}`);
-      let page = 1;
-      let hasMore = true;
 
-      // C. Handle Pagination
-      while (hasMore) {
-        const entries = await this.clockify.fetchUserTimeEntries(
-          user.clockify_id,
-          startDate,
-          page,
-        );
+      // Try/Catch per user to prevent one failure from stopping the whole job
+      try {
+        let page = 1;
+        let hasMore = true;
 
-        if (!entries || entries.length === 0) {
-          hasMore = false;
-          break;
+        // C. Handle Pagination
+        while (hasMore) {
+          const entries = await this.clockify.fetchUserTimeEntries(
+            user.clockify_id,
+            startDate,
+            page,
+          );
+
+          if (!entries || entries.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          const result = await this.entryRepo.processBatch(entries);
+          totalSynced += result.synced;
+
+          page++;
+
+          // D. Rate Limit Protection
+          await new Promise((r) => setTimeout(r, 100));
         }
-
-        const result = await this.entryRepo.processBatch(entries);
-        totalSynced += result.synced;
-
-        page++;
-
-        // D. Rate Limit Protection (50ms pause)
-        await new Promise((r) => setTimeout(r, 50));
+      } catch (err) {
+        console.error(
+          `   FAILED to backfill ${user.name}: ${(err as Error).message}`,
+        );
+        // Loop continues to next user automatically
       }
     }
 
