@@ -13,6 +13,7 @@ export class SyncEngine {
     const updates: AirtableUpdate[] = [];
     const stats: SyncStats = { updated: 0, skipped: 0, missing: 0 };
 
+    // Create a map for lookup performance
     const airtableMap = new Map<string, AirtableRecord>(
       destinationRecords.map((rec) => [rec.fields.Name.trim(), rec]),
     );
@@ -32,7 +33,7 @@ export class SyncEngine {
       // Small epsilon to prevent redundant updates due to floating point precision
       if (Math.abs(supabaseHours - airtableHours) > 0.01) {
         console.log(
-          `✅ Updating ${lookupKey} (${airtableHours} -> ${supabaseHours})`,
+          `✅ MATCH FOUND: Updating ${lookupKey} (${airtableHours} -> ${supabaseHours})`,
         );
 
         updates.push({

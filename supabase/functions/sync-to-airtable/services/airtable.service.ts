@@ -8,7 +8,6 @@ export class AirtableService {
     private readonly pat: string,
     private readonly baseId: string,
     private readonly tableId: string,
-    private readonly viewId?: string,
   ) {
     this.headers = {
       Authorization: `Bearer ${this.pat}`,
@@ -23,10 +22,6 @@ export class AirtableService {
     do {
       let url =
         `${this.baseUrl}/${this.baseId}/${this.tableId}?fields%5B%5D=Name&fields%5B%5D=Actual+Hours`;
-
-      if (this.viewId) {
-        url += `&view=${encodeURIComponent(this.viewId)}`;
-      }
 
       if (offset) {
         url += `&offset=${offset}`;
@@ -48,22 +43,22 @@ export class AirtableService {
 
       if (offset) {
         console.log(
-          `   ..captured ${allRecords.length} records, fetching next page...`,
+          `   ..found ${allRecords.length} records, fetching next page...`,
         );
       }
     } while (offset);
 
-    console.log(`Total records retrieved: ${allRecords.length}`);
+    console.log(`Total records found: ${allRecords.length}`);
     return allRecords;
   }
 
-  async patchBatch(
+  async updateRecords(
     updates: { id: string; fields: { "Actual Hours": number } }[],
   ): Promise<void> {
     if (updates.length === 0) return;
 
     const url = `${this.baseUrl}/${this.baseId}/${this.tableId}`;
-    console.log(`Sending ${updates.length} updates to Airtable...`);
+    console.log(`Pushing ${updates.length} updates to Airtable...`);
 
     for (let i = 0; i < updates.length; i += 10) {
       const chunk = updates.slice(i, i + 10);

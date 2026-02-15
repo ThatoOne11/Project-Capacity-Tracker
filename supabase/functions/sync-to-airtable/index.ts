@@ -7,7 +7,6 @@ const ENV = {
   AIRTABLE_PAT: Deno.env.get("AIRTABLE_PAT")!,
   AIRTABLE_BASE_ID: Deno.env.get("AIRTABLE_BASE_ID")!,
   AIRTABLE_TABLE_ID: Deno.env.get("AIRTABLE_TABLE_ID")!,
-  AIRTABLE_VIEW_ID: Deno.env.get("AIRTABLE_VIEW_ID")!,
   SUPABASE_URL: Deno.env.get("SUPABASE_URL")!,
   SUPABASE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 };
@@ -19,17 +18,16 @@ Deno.serve(async (_req: Request) => {
       ENV.AIRTABLE_PAT,
       ENV.AIRTABLE_BASE_ID,
       ENV.AIRTABLE_TABLE_ID,
-      ENV.AIRTABLE_VIEW_ID,
     );
 
-    // 1. Fetch Source Data (Supabase View)
+    // 1. Fetch Supabase View Data
     const { data: sourceData, error: dbError } = await supabase
       .from("monthly_aggregates_view")
       .select("*");
 
     if (dbError) throw new Error(`Supabase Error: ${dbError.message}`);
 
-    // 2. Fetch Destination Data (Airtable)
+    // 2. Fetch Airtable Data
     const destinationRecords = await airtable.fetchRecords();
 
     // 3. Process Differences
@@ -40,7 +38,7 @@ Deno.serve(async (_req: Request) => {
 
     // 4. Execute Updates
     if (updates.length > 0) {
-      await airtable.patchBatch(updates);
+      await airtable.updateRecords(updates);
     }
 
     return new Response(JSON.stringify({ success: true, stats }), {
@@ -48,7 +46,7 @@ Deno.serve(async (_req: Request) => {
     });
   } catch (err: unknown) {
     const error = err as Error;
-    console.error(`❌ Sync Error: ${error.message}`);
+    console.error(`Sync Error: ${error.message}`);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       {
