@@ -17,7 +17,7 @@ export class AirtableDiffCalculator {
     // Track which Airtable records we have "touched" (matched with Supabase)
     const touchedAirtableIds = new Set<string>();
 
-    // 1. Map for fast lookup
+    // 1. Build Map (Normalized)
     const airtableMap = new Map<string, AirtableRecord>(
       destinationRecords.map((rec) => [
         rec.fields.Name.trim().toLowerCase(),
@@ -41,6 +41,7 @@ export class AirtableDiffCalculator {
       touchedAirtableIds.add(match.id); // Mark as visited
 
       const supabaseHours = parseFloat(row.total_hours);
+      // Treat undefined (blank) as 0 for comparison
       const airtableHours = match.fields["Actual Hours"] || 0;
 
       // 3. Epsilon Check (Floating Point Math)
@@ -64,13 +65,10 @@ export class AirtableDiffCalculator {
     // it means it no longer exists in Supabase (or has 0 hours). We must zero it out.
     for (const record of destinationRecords) {
       if (!touchedAirtableIds.has(record.id)) {
-        const currentHours = record.fields["Actual Hours"] || 0;
+        const rawValue = record.fields["Actual Hours"];
 
-        // Only update if it actually has data to clear
-        if (currentHours > 0.01) {
-          console.log(
-            `CLEANUP: Zeroing out ${record.fields.Name} (No longer in Supabase)`,
-          );
+        // STRICT CHECK: If it is NOT the number 0 (e.g. 5.0, null, or undefined), force it to 0.
+        if (rawValue !== 0) {
           updates.push({
             id: record.id,
             fields: { "Actual Hours": 0 },
