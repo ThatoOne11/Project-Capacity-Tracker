@@ -23,7 +23,11 @@ export class TimeEntryRepository {
             .is("deleted_at", null);
 
         if (validIds.length > 0) {
-            query = query.not("clockify_id", "in", `(${validIds.join(",")})`);
+            // Map IDs to quoted strings ('id1', 'id2') otherwise Postgres fails to filter them and deletes EVERYTHING.
+            const formattedIds = `(${
+                validIds.map((id) => `"${id}"`).join(",")
+            })`;
+            query = query.filter("clockify_id", "not.in", formattedIds);
         }
 
         const { data, error } = await query.select("id");
