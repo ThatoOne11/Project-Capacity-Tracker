@@ -5,16 +5,19 @@ A robust, automated synchronization pipeline that pulls time-tracking data from 
 ## Architecture
 
 1. **Source**: Clockify API (Time Entries, Users, Projects, Clients).
-2. **Processing**: Supabase Edge Functions (Deno).
-    - **Sync Service**: Incremental 15-minute syncing.
-    - **Backfill Service**: Historical data import.
-    - **Airtable Service**: Pushes aggregated views.
+2. **Processing**: Supabase Edge Functions.
+   - **Sync Service**: Hybrid syncing strategy.
+     - _Business Hours_: Hourly active syncing (Mon-Fri).
+     - _Audit_: Nightly deep-scan for self-healing.
+   - **Backfill Service**: Historical data import.
+   - **Airtable Service**: Pushes aggregated views.
+   - **Alerting**: Slack notifications on failure.
 
 3. **Storage**: Supabase.
-    - **Raw Data**: Tables for users, projects, and time entries.
-    - **Logic**: Views for aggregation and Soft-Deletes for data integrity.
+   - **Raw Data**: Tables for users, projects, and time entries.
+   - **Logic**: Views for aggregation and Soft-Deletes for data integrity.
 
-4. **Automation**: `pg_cron` + `pg_net` triggers the Edge Functions every 15 minutes.
+4. **Automation**: `pg_cron` + `pg_net` triggers the Edge Functions on defined schedules.
 5. **Security**: All API keys stored in **Supabase Vault**; Row Level Security (RLS) enabled.
 
 ## Local Dev Setup
@@ -22,7 +25,7 @@ A robust, automated synchronization pipeline that pulls time-tracking data from 
 ### 1. Clone & Install
 
 ```bash
-git clone <your-repo-url>
+git clone <repo-url>
 cd project-capacity-tracker
 ```
 
@@ -32,8 +35,8 @@ Create a `.env` file in `supabase/functions/` with the following keys.
 _(These are needed for local testing.)_
 
 ```env
-SUPABASE_URL="http://127.0.0.1:54321"
-SUPABASE_SERVICE_ROLE_KEY="<your_local_service_role_key>"
+SUPABASE_URL="[http://127.0.0.1:54321](http://127.0.0.1:54321)"
+LEGACY_SERVICE_ROLE_KEY="<your_local_service_role_key>"
 
 CLOCKIFY_API_KEY="<your_clockify_api_key>"
 CLOCKIFY_WORKSPACE_ID="<your_workspace_id>"
@@ -41,6 +44,8 @@ CLOCKIFY_WORKSPACE_ID="<your_workspace_id>"
 AIRTABLE_PAT="<your_personal_access_token>"
 AIRTABLE_BASE_ID="<your_base_id>"
 AIRTABLE_TABLE_ID="<your_table_id>"
+
+SLACK_WEBHOOK_URL="<your_slack_webhook_url>"
 ```
 
 ### 3. Start Local Supabase
@@ -73,6 +78,7 @@ select vault.create_secret(
 );
 
 -- 2. The Service Role Key (Found in output of `supabase status`)
+-- Note: Use the legacy 'service_role' key (starts with eyJ...)
 select vault.create_secret(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
   'service_role_key'
@@ -100,13 +106,28 @@ curl -L -X POST 'https://<PROJECT_REF>.supabase.co/functions/v1/backfill-clockif
   }'
 ```
 
-### Force Sync (Incremental)
+### Force "Fast" Sync (Incremental)
 
-To trigger the 15-minute sync manually:
+To trigger the standard hourly sync manually (checks last 24h):
 
 ```bash
 curl -L -X POST 'https://<PROJECT_REF>.supabase.co/functions/v1/clockify-entries-sync' \
-  -H 'Authorization: Bearer <SERVICE_ROLE_KEY>'
+  -H 'Authorization: Bearer <SERVICE_ROLE_KEY>' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{}'
+```
+
+### Force "Audit" Sync (Deep Clean)
+
+To trigger the deep cleanup manually (checks last 30 days):
+
+```bash
+curl -L -X POST 'https://<PROJECT_REF>.supabase.co/functions/v1/clockify-entries-sync' \
+  -H 'Authorization: Bearer <SERVICE_ROLE_KEY>' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{
+    "lookbackDays": 30
+  }'
 ```
 
 ### Monitoring
@@ -128,7 +149,10 @@ LIMIT 10;
 
 ## Key Features
 
+- **Business Hours Sync**: Runs hourly (08:00-20:00 SAST) to catch daily activity.
+- **Audit Sync**: Runs nightly (03:00 SAST) to self-heal edits from the last 30 days.
+
 - **Upserts**: New or updated Clockify entries are updated in Supabase.
 - **Soft Deletes**: Entries deleted in Clockify are detected and marked as `deleted_at` in Supabase.
 - **Cleanup**: If an entry is removed/moved, Airtable records are "zeroed out" to maintain accuracy.
-- Uses `pg_net` with a **5-minute timeout** to handle large syncs without locking the database.
+- **Resilience**: Uses **Slack Alerts** for critical failures.
