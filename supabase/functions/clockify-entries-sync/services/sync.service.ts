@@ -26,7 +26,7 @@ export class SyncService {
     if (error || !users) {
       // Alert immediately if we can't even read the database
       const msg = error?.message || "No users returned";
-      await this.slack.sendAlert("syncRecentData (Fetch Users)", msg);
+      await this.slack.sendAlert("syncRecentData in SyncService", msg);
       throw new Error(`Could not fetch users to poll: ${msg}`);
     }
 
@@ -94,7 +94,7 @@ export class SyncService {
 
         // 2. Send Slack Alert
         await this.slack.sendAlert(
-          "triggerAirtableSync (Response Error)",
+          "triggerAirtableSync in SyncService",
           errorMsg,
         );
       } else {
@@ -105,10 +105,7 @@ export class SyncService {
       const msg = (err as Error).message;
       console.error(`Internal Server Error triggering Airtable sync: ${msg}`);
 
-      await this.slack.sendAlert(
-        "triggerAirtableSync (Internal Server Error)",
-        msg,
-      );
+      await this.slack.sendAlert("triggerAirtableSync in SyncService", msg);
     }
   }
 }

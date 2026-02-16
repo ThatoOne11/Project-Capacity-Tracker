@@ -1,24 +1,20 @@
+import { SLACK_CONFIG } from "../../_shared/config.ts";
+
 export class SlackService {
-    private webhookUrl: string;
-
-    constructor() {
-        this.webhookUrl = Deno.env.get("SLACK_WEBHOOK_URL") ?? "";
-    }
-
     async sendAlert(functionName: string, errorMsg: string): Promise<void> {
-        if (!this.webhookUrl) {
-            console.warn("⚠️ No SLACK_WEBHOOK_URL set. Alert skipped.");
+        if (!SLACK_CONFIG.webhookUrl) {
+            console.warn("No SLACK_WEBHOOK_URL set. Alert skipped.");
             return;
         }
 
         const payload = {
-            text: `🚨 *Supabase Error* in \`${functionName}\``,
+            text: `🚨 Project Capacity Tracker Sync Failed`,
             blocks: [
                 {
                     type: "header",
                     text: {
                         type: "plain_text",
-                        text: "🚨 Process Failed",
+                        text: "🚨 Project Capacity Tracker Sync Failed",
                         emoji: true,
                     },
                 },
@@ -46,7 +42,7 @@ export class SlackService {
         };
 
         try {
-            await fetch(this.webhookUrl, {
+            await fetch(SLACK_CONFIG.webhookUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
