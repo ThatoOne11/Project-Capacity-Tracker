@@ -6,7 +6,7 @@ import { SyncController } from "./controllers/sync.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 import { SlackService } from "../_shared/services/slack.service.ts";
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
   // 1. Initialize Clients
   const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
 
@@ -29,5 +29,5 @@ Deno.serve(async (_req) => {
   const controller = new SyncController(syncService);
 
   // 3. Execute
-  return await controller.handleRequest();
+  return await controller.handleRequest(req);
 });

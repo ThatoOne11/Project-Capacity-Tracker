@@ -12,11 +12,21 @@ export class SyncService {
     private readonly slack: SlackService,
   ) {}
 
-  async syncRecentData(): Promise<number> {
-    // 1. Calculate Window (Last 24 Hours)
+  //Accept 'lookbackDays', default to 1 (24 hours)
+  async syncRecentData(lookbackDays: number = 1): Promise<number> {
+    // 1. Calculate Dynamic Window
     const now = new Date();
-    const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const startTime = new Date(
+      now.getTime() - lookbackDays * 24 * 60 * 60 * 1000,
+    )
       .toISOString();
+
+    // Log the mode so we can see it in Supabase logs
+    console.log(
+      `Sync Mode: ${
+        lookbackDays === 1 ? "FAST" : "DEEP CLEAN"
+      } (Window: ${lookbackDays} days, Start: ${startTime})`,
+    );
 
     // 2. Fetch Target Users
     const { data: users, error } = await this.supabase
@@ -44,7 +54,6 @@ export class SyncService {
           startTime,
         );
 
-        // syncUserTimeWindow handles both upserts and soft-deleting removed entries
         const { upserted, deleted } = await this.repo.syncUserTimeWindow(
           user.id,
           startTime,
@@ -86,13 +95,12 @@ export class SyncService {
       );
 
       if (!response.ok) {
-        // 1. Capture the error details
         const errorText = await response.text();
         const errorMsg = `Status: ${response.status} | Body: ${errorText}`;
 
         console.error(`Failed to trigger Airtable sync: ${errorMsg}`);
 
-        // 2. Send Slack Alert
+        //Send Slack Alert
         await this.slack.sendAlert(
           "triggerAirtableSync in SyncService",
           errorMsg,
@@ -101,10 +109,10 @@ export class SyncService {
         console.log("Airtable sync triggered successfully.");
       }
     } catch (err) {
-      // 3. Catch Fetch Errors (e.g. DNS issues, timeouts)
       const msg = (err as Error).message;
       console.error(`Internal Server Error triggering Airtable sync: ${msg}`);
 
+      //Send Slack Alert
       await this.slack.sendAlert("triggerAirtableSync in SyncService", msg);
     }
   }
