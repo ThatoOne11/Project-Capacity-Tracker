@@ -3,8 +3,11 @@ import { AirtableService } from "./services/airtable.service.ts";
 import { AggregateRow } from "./types/types.ts";
 import { AirtableDiffCalculator } from "./logic/diff.calculator.ts";
 import { AIRTABLE_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
+import { SlackService } from "../_shared/services/slack.service.ts";
 
 Deno.serve(async (_req: Request) => {
+  const slack = new SlackService();
+
   try {
     const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
     const airtable = new AirtableService(
@@ -40,6 +43,10 @@ Deno.serve(async (_req: Request) => {
   } catch (err: unknown) {
     const error = err as Error;
     console.error(`Sync Error: ${error.message}`);
+
+    // 3. Send Slack Alert
+    await slack.sendAlert("Airtable-sync Edge Function", error.message);
+
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       {
