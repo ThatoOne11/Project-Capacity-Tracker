@@ -1,16 +1,11 @@
-import { SLACK_CONFIG } from "../../_shared/config.ts";
+import { SlackClient } from "../clients/slack.client.ts";
 import { SlackPayload, SyncReportStats } from "../types/types.ts";
 
 export class SlackService {
-    private readonly webhookUrl = SLACK_CONFIG.webhookUrl;
+    private readonly client = new SlackClient();
 
     //Sends a critical alert for system failures
     async sendAlert(functionName: string, errorMsg: string): Promise<void> {
-        if (!this.webhookUrl) {
-            console.warn("Skipping Slack Alert: No Webhook URL configured.");
-            return;
-        }
-
         const payload: SlackPayload = {
             text: "🚨 Project Capacity Tracker Sync Failed",
             blocks: [
@@ -45,13 +40,11 @@ export class SlackService {
             ],
         };
 
-        await this.postToSlack(payload);
+        await this.client.post(payload);
     }
 
     //Formats and sends the Daily DevOps Sync Report
     async sendSyncReport(stats: SyncReportStats): Promise<void> {
-        if (!this.webhookUrl) return;
-
         const payload: SlackPayload = {
             text: "[Project Capacity Tracker] Sync Report", // Fallback for mobile notifications
             blocks: [
@@ -76,9 +69,7 @@ export class SlackService {
                         },
                     ],
                 },
-                {
-                    type: "divider",
-                },
+                { type: "divider" },
                 {
                     type: "section",
                     text: {
@@ -91,35 +82,14 @@ export class SlackService {
                 },
                 {
                     type: "context",
-                    elements: [
-                        {
-                            type: "mrkdwn",
-                            text: "System is now 100% in sync with Clockify.",
-                        },
-                    ],
+                    elements: [{
+                        type: "mrkdwn",
+                        text: "System is now 100% in sync with Clockify.",
+                    }],
                 },
             ],
         };
 
-        await this.postToSlack(payload);
-    }
-
-    //Private helper to handle the HTTP request
-    private async postToSlack(payload: SlackPayload): Promise<void> {
-        try {
-            const response = await fetch(this.webhookUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
-
-            if (!response.ok) {
-                console.error(
-                    `Slack API Error: ${response.status} ${response.statusText}`,
-                );
-            }
-        } catch (err) {
-            console.error("Failed to send Slack payload:", err);
-        }
+        await this.client.post(payload);
     }
 }
