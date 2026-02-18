@@ -45,3 +45,34 @@ export type TimeEntryRow = {
   project_id: string | null;
   deleted_at?: string | null;
 };
+
+export type SyncReportStats = {
+  durationSeconds: number;
+  upserted: number;
+  deleted: number;
+  usersScanned: number;
+  status: "SUCCESS" | "FAILURE";
+  newUsers: string[];
+  renamedUsers: string[];
+  newProjects: string[];
+  newClients: string[];
+};
+
+export type SlackBlock = {
+  type: string;
+  text?: {
+    type: string;
+    text: string;
+    emoji?: boolean;
+  };
+  fields?: {
+    type: string;
+    text: string;
+  }[];
+  elements?: unknown[];
+};
+
+export type SlackPayload = {
+  text: string;
+  blocks?: SlackBlock[];
+};
