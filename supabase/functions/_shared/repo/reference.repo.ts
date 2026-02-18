@@ -67,4 +67,13 @@ export class ReferenceRepository {
 
         if (error) throw new Error(`DB Error (Projects): ${error.message}`);
     }
+
+    async fetchActiveUsers() {
+        const { data, error } = await this.client
+            .from("clockify_users")
+            .select("id, clockify_id, name");
+
+        if (error) throw new Error(error.message);
+        return data || [];
+    }
 }

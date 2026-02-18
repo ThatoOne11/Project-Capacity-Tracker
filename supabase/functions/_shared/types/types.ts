@@ -46,15 +46,15 @@ export type TimeEntryRow = {
   deleted_at?: string | null;
 };
 
-export interface SyncReportStats {
+export type SyncReportStats = {
   durationSeconds: number;
   upserted: number;
   deleted: number;
   usersScanned: number;
   status: "SUCCESS" | "FAILURE";
-}
+};
 
-export interface SlackBlock {
+export type SlackBlock = {
   type: string;
   text?: {
     type: string;
@@ -66,9 +66,9 @@ export interface SlackBlock {
     text: string;
   }[];
   elements?: unknown[];
-}
+};
 
-export interface SlackPayload {
+export type SlackPayload = {
   text: string;
   blocks?: SlackBlock[];
-}
+};
