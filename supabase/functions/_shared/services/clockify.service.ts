@@ -43,25 +43,42 @@ export class ClockifyService {
 
   // Fetches entries within a time window for a specific user.
   // Hydrated=true ensures we get project names even if they are new.
-  fetchRecentUserEntries(
+  // Fetches ALL entries within a time window (handles pagination automatically)
+  async fetchRecentUserEntries(
     userId: string,
     start: string,
     end?: string,
   ): Promise<ClockifyTimeEntry[]> {
-    const params = new URLSearchParams({
-      start,
-      hydrated: "true",
-      "page-size": "200", // Large batch for recent changes
-    });
+    let page = 1;
+    const pageSize = 200;
+    const allEntries: ClockifyTimeEntry[] = [];
+    let hasMore = true;
 
-    // Only add 'end' if it was actually passed in
-    if (end) {
-      params.append("end", end);
+    while (hasMore) {
+      const params = new URLSearchParams({
+        start,
+        hydrated: "true",
+        "page-size": pageSize.toString(),
+        page: page.toString(),
+      });
+
+      if (end) params.append("end", end);
+
+      const response = await this.get<ClockifyTimeEntry[]>(
+        `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
+      );
+
+      allEntries.push(...response);
+
+      // If we got a full page, there might be more. If less, we are done.
+      if (response.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
     }
 
-    return this.get<ClockifyTimeEntry[]>(
-      `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
-    );
+    return allEntries;
   }
 
   private async get<T>(endpoint: string): Promise<T> {

@@ -4,7 +4,7 @@ import { ClockifyTimeEntry, SyncResult, TimeEntryRow } from "../types/types.ts";
 export class TimeEntryRepository {
     constructor(private readonly client: SupabaseClient) {}
 
-    //Main entry point: Handles Upserts + Soft Deletes for a time window
+    // Main entry point: Handles Upserts + Soft Deletes for a time window
     async syncUserTimeWindow(
         internalUserId: string,
         startTime: string,
@@ -13,30 +13,55 @@ export class TimeEntryRepository {
         // 1. Upsert incoming entries
         const { synced } = await this.processBatch(entries);
 
-        // 2. Handle Soft Deletes (The Set Difference)
-        const validIds = entries.map((e) => e.id);
-        let query = this.client
+        // 2. Identify "Ghost" Entries (In DB but NOT in incoming list)
+        // We fetch DB IDs and diff in memory to avoid errors
+        // A. Get all currently active IDs for this user & window
+        const { data: existingRows, error } = await this.client
             .from("clockify_time_entries")
-            .update({ deleted_at: new Date().toISOString() })
+            .select("clockify_id")
             .eq("user_id", internalUserId)
             .gte("start_time", startTime)
             .is("deleted_at", null);
 
-        if (validIds.length > 0) {
-            // Map IDs to quoted strings ('id1', 'id2') otherwise Postgres fails to filter them and deletes EVERYTHING.
-            const formattedIds = `(${
-                validIds.map((id) => `"${id}"`).join(",")
-            })`;
-            query = query.filter("clockify_id", "not.in", formattedIds);
+        if (error) {
+            console.error("Error checking deletions:", error.message);
+            return { upserted: synced, deleted: 0 };
         }
 
-        const { data, error } = await query.select("id");
-        if (error) console.error("Error processing deletions:", error.message);
+        // B. Calculate difference in memory (Fast & Safe)
+        const incomingIds = new Set(entries.map((e) => e.id));
+        const idsToDelete = existingRows
+            .filter((row) => !incomingIds.has(row.clockify_id))
+            .map((row) => row.clockify_id);
 
-        return { upserted: synced, deleted: data?.length || 0 };
+        // C. Soft Delete the ghosts
+        let deletedCount = 0;
+        if (idsToDelete.length > 0) {
+            // Batch the deletions just in case (e.g. chunks of 50)
+            const BATCH_SIZE = 50;
+            for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+                const batch = idsToDelete.slice(i, i + BATCH_SIZE);
+
+                const { error: delError } = await this.client
+                    .from("clockify_time_entries")
+                    .update({ deleted_at: new Date().toISOString() })
+                    .in("clockify_id", batch);
+
+                if (delError) {
+                    console.error(
+                        "Failed to soft delete batch:",
+                        delError.message,
+                    );
+                } else {
+                    deletedCount += batch.length;
+                }
+            }
+        }
+
+        return { upserted: synced, deleted: deletedCount };
     }
 
-    //Processes a raw batch of entries: Resolves IDs -> Transforms -> Upserts
+    // Processes a raw batch of entries: Resolves IDs -> Transforms -> Upserts
     async processBatch(entries: ClockifyTimeEntry[]): Promise<SyncResult> {
         if (entries.length === 0) return { synced: 0, skipped: 0 };
 
@@ -83,7 +108,7 @@ export class TimeEntryRepository {
         return { synced: rows.length, skipped };
     }
 
-    //Helper: Batches ID lookups to avoid N+1 queries
+    // Helper: Batches ID lookups to avoid N+1 queries
     private async resolveDependencies(entries: ClockifyTimeEntry[]) {
         const userIds = [...new Set(entries.map((e) => e.userId))];
         const projectIds = [
