@@ -3,11 +3,13 @@ import { SlackService } from "../../_shared/services/slack.service.ts";
 import { SUPABASE_CONFIG } from "../../_shared/config.ts";
 import { SyncUtils } from "../utils/sync.utils.ts";
 import { UserEntrySyncer } from "./user-entry.syncer.ts";
+import { ReferenceSyncer } from "./reference.syncer.ts";
 
 export class SyncService {
   constructor(
     private readonly refRepo: ReferenceRepository,
     private readonly userSyncer: UserEntrySyncer,
+    private readonly refSyncer: ReferenceSyncer,
     private readonly slack: SlackService,
   ) {}
 
@@ -23,11 +25,15 @@ export class SyncService {
     );
 
     try {
-      // 1. Fetch Users (Delegated to Repo)
+      // 1. Sync References from Clockify
+      console.log("Syncing References (Users/Projects/Clients)...");
+      await this.refSyncer.syncReferences(stats);
+
+      // 2. Fetch Users
       const users = await this.refRepo.fetchActiveUsers();
       console.log(`Checking ${users.length} users...`);
 
-      // 2. Process Users (Delegated to UserSyncer)
+      // 3. Process Users
       for (const user of users) {
         await this.userSyncer.syncUser(user, startDate, stats);
       }
@@ -37,10 +43,10 @@ export class SyncService {
       throw err;
     }
 
-    // 3. Finalize & Report (Delegated to Utils & Slack)
+    // 4. Finalize & Report
     SyncUtils.finalizeStats(stats, startTime);
 
-    // Only spam Slack if meaningful work was done
+    // Only hit Slack if any work was done
     const hasChanges = stats.upserted > 0 ||
       stats.deleted > 0 ||
       stats.newUsers.length > 0 ||

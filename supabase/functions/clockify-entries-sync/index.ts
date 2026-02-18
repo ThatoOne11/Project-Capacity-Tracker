@@ -7,6 +7,7 @@ import { SyncService } from "./services/sync.service.ts";
 import { UserEntrySyncer } from "./services/user-entry.syncer.ts";
 import { SyncController } from "./controllers/sync.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
+import { ReferenceSyncer } from "./services/reference.syncer.ts";
 
 Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
@@ -22,7 +23,8 @@ Deno.serve(async (req) => {
 
   // 2. Domain Specific Logic & Main Orchestrator
   const userSyncer = new UserEntrySyncer(clockifyService, timeEntryRepo);
-  const syncService = new SyncService(refRepo, userSyncer, slack);
+  const refSyncer = new ReferenceSyncer(clockifyService, refRepo);
+  const syncService = new SyncService(refRepo, userSyncer, refSyncer, slack);
   const controller = new SyncController(syncService);
 
   // 3. Execute
