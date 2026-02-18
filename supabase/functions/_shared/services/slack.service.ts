@@ -7,13 +7,13 @@ export class SlackService {
     //Sends a critical alert for system failures
     async sendAlert(functionName: string, errorMsg: string): Promise<void> {
         const payload: SlackPayload = {
-            text: "🚨 Project Capacity Tracker Sync Failed",
+            text: "🚨 Project Capacity Tracker - Sync Failed",
             blocks: [
                 {
                     type: "header",
                     text: {
                         type: "plain_text",
-                        text: "🚨 Project Capacity Tracker Sync Failed",
+                        text: "🚨 Project Capacity Tracker - Sync Failed",
                         emoji: true,
                     },
                 },
@@ -43,16 +43,16 @@ export class SlackService {
         await this.client.post(payload);
     }
 
-    //Formats and sends the Daily DevOps Sync Report
+    //Formats and sends the Daily Audit Sync Report
     async sendSyncReport(stats: SyncReportStats): Promise<void> {
         const payload: SlackPayload = {
-            text: "[Project Capacity Tracker] Sync Report", // Fallback for mobile notifications
+            text: "Project Capacity Tracker - Sync Report", // Fallback for mobile notifications
             blocks: [
                 {
                     type: "header",
                     text: {
                         type: "plain_text",
-                        text: "[Project Capacity Tracker] - Sync Report",
+                        text: "Project Capacity Tracker - Sync Report",
                         emoji: true,
                     },
                 },
