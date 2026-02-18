@@ -41,7 +41,13 @@ export class SyncService {
     SyncUtils.finalizeStats(stats, startTime);
 
     // Only spam Slack if meaningful work was done
-    if (stats.upserted > 0 || stats.deleted > 0) {
+    const hasChanges = stats.upserted > 0 ||
+      stats.deleted > 0 ||
+      stats.newUsers.length > 0 ||
+      stats.renamedUsers.length > 0 ||
+      stats.newProjects.length > 0;
+
+    if (hasChanges) {
       await this.slack.sendSyncReport(stats);
     }
 

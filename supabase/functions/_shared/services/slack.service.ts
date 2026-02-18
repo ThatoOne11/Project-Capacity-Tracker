@@ -45,6 +45,31 @@ export class SlackService {
 
     //Formats and sends the Daily Audit Sync Report
     async sendSyncReport(stats: SyncReportStats): Promise<void> {
+        // 1. Format the "Changes" section
+        const formatList = (items: string[]) => {
+            if (items.length === 0) return null;
+            return `${items.length} (${items.join(", ")})`;
+        };
+
+        const newUsersStr = formatList(stats.newUsers);
+        const renamedStr = formatList(stats.renamedUsers);
+        const newProjectsStr = formatList(stats.newProjects);
+
+        // Only build the "Changes" block if there ARE changes
+        const hasChanges = newUsersStr || renamedStr || newProjectsStr;
+
+        let changesText = "*Changes:*\n";
+        if (hasChanges) {
+            if (newUsersStr) changesText += `- New Users: ${newUsersStr}\n`;
+            if (renamedStr) changesText += `- Renamed Users: ${renamedStr}\n`;
+            if (newProjectsStr) {
+                changesText += `- New Projects: ${newProjectsStr}\n`;
+            }
+        } else {
+            changesText += "_No changes detected._\n";
+        }
+
+        // 2. Build the Payload
         const payload: SlackPayload = {
             text: "Project Capacity Tracker - Sync Report", // Fallback for mobile notifications
             blocks: [
@@ -74,10 +99,17 @@ export class SlackService {
                     type: "section",
                     text: {
                         type: "mrkdwn",
-                        text: "*Stats:*\n" +
-                            `-  *${stats.upserted}* time entries updated\n` +
-                            `-  *${stats.deleted}* soft deleted\n` +
-                            `-  *${stats.usersScanned}* users scanned`,
+                        text: changesText,
+                    },
+                },
+                {
+                    type: "section",
+                    text: {
+                        type: "mrkdwn",
+                        text: "*Cleanup stats:*\n" +
+                            `- Time entries updated: ${stats.upserted}\n` +
+                            `- Time entries deleted: ${stats.deleted}\n` +
+                            `- Total users scanned: ${stats.usersScanned}`,
                     },
                 },
                 {

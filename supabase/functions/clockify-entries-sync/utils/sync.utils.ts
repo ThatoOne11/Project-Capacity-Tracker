@@ -8,6 +8,10 @@ export class SyncUtils {
       deleted: 0,
       usersScanned: 0,
       status: "SUCCESS",
+      newUsers: [],
+      renamedUsers: [],
+      newProjects: [],
+      newClients: [],
     };
   }
 

@@ -52,6 +52,10 @@ export type SyncReportStats = {
   deleted: number;
   usersScanned: number;
   status: "SUCCESS" | "FAILURE";
+  newUsers: string[];
+  renamedUsers: string[];
+  newProjects: string[];
+  newClients: string[];
 };
 
 export type SlackBlock = {
