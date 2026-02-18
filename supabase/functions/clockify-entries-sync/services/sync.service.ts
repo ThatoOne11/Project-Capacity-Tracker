@@ -19,8 +19,11 @@ export class SyncService {
     const stats = SyncUtils.initializeStats();
     const startDate = SyncUtils.calculateStartDate(lookbackDays);
 
+    // Identify if this is the Nightly Audit (3am) or just the hourly check
+    const isDeepClean = lookbackDays > 1;
+
     console.log(
-      `Sync Mode: ${lookbackDays === 1 ? "FAST" : "DEEP CLEAN"} ` +
+      `Sync Mode: ${isDeepClean ? "DEEP CLEAN" : "FAST"} ` +
         `(Window: ${lookbackDays} days, Start: ${startDate})`,
     );
 
@@ -53,8 +56,11 @@ export class SyncService {
       stats.renamedUsers.length > 0 ||
       stats.newProjects.length > 0;
 
-    if (hasChanges) {
+    //Only send the report if it's the Deep Clean Cron
+    if (isDeepClean && hasChanges) {
       await this.slack.sendSyncReport(stats);
+    } else if (hasChanges) {
+      console.log("Changes detected in Fast Sync.");
     }
 
     return stats.upserted + stats.deleted;
