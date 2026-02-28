@@ -5,16 +5,18 @@ export type AggregateRow = {
   total_hours: string;
 };
 
+// This matches the "Ashwin van der Merwe - Aqua Protrack - February 2026"
 export type AirtableRecord = {
   id: string;
   fields: {
-    "Name": string; // This matches the "Ashwin van der Merwe - Aqua Protrack - February 2026"
+    "Name": string;
     "Actual Hours": number;
   };
 };
 
 export type SyncStats = {
   updated: number;
+  inserted: number;
   skipped: number;
   missing: number;
 };
@@ -24,4 +26,20 @@ export type AirtableUpdate = {
   fields: {
     "Actual Hours": number;
   };
+};
+
+export type AirtableInsert = {
+  fields: {
+    "User": string;
+    "Project": string;
+    "Month": string;
+    "Actual Hours": number;
+  };
+};
+
+export type SyncJob = {
+  name: string;
+  sourceView: string;
+  destinationTableId: string;
+  allowInserts: boolean;
 };
