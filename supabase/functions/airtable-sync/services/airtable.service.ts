@@ -1,4 +1,8 @@
-import { AirtableInsert, AirtableRecord } from "../types/types.ts";
+import {
+  AirtableInsert,
+  AirtableRecord,
+  AirtableResponseSchema,
+} from "../types/types.ts";
 
 export class AirtableService {
   private readonly baseUrl = "https://api.airtable.com/v0";
@@ -34,9 +38,11 @@ export class AirtableService {
         throw new Error(`Airtable Fetch Failed: ${await res.text()}`);
       }
 
-      const data = await res.json();
+      const rawData = await res.json();
+      const data = AirtableResponseSchema.parse(rawData);
+
       if (data.records) {
-        allRecords.push(...(data.records as AirtableRecord[]));
+        allRecords.push(...data.records);
       }
 
       offset = data.offset;

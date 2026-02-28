@@ -1,17 +1,26 @@
+import { z } from "npm:zod";
+
+export const AirtableRecordSchema = z.object({
+  id: z.string(),
+  // Explicitly tell Zod that the keys are strings, and the values are unknown
+  fields: z.record(z.string(), z.unknown()).transform((fields) => ({
+    "Name": typeof fields["Name"] === "string" ? fields["Name"] : "",
+    "Actual Hours": typeof fields["Actual Hours"] === "number"
+      ? fields["Actual Hours"]
+      : 0,
+  })),
+});
+
+export const AirtableResponseSchema = z.object({
+  records: z.array(AirtableRecordSchema).optional(),
+  offset: z.string().optional(),
+});
+
 export type AggregateRow = {
   user_name: string;
   project_name: string;
   month: string;
   total_hours: string;
-};
-
-// This matches the "Ashwin van der Merwe - Aqua Protrack - February 2026"
-export type AirtableRecord = {
-  id: string;
-  fields: {
-    "Name": string;
-    "Actual Hours": number;
-  };
 };
 
 export type SyncStats = {
@@ -43,3 +52,5 @@ export type SyncJob = {
   destinationTableId: string;
   allowInserts: boolean;
 };
+
+export type AirtableRecord = z.infer<typeof AirtableRecordSchema>;

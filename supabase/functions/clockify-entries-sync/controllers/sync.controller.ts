@@ -1,22 +1,27 @@
 import { SyncService } from "../services/sync.service.ts";
+import { SyncRequestSchema } from "../../_shared/types/types.ts";
 
 export class SyncController {
   constructor(private readonly service: SyncService) {}
 
   async handleRequest(req: Request): Promise<Response> {
     try {
-      // 1. Parse Body (Handle empty body gracefully for the 15-min cron)
+      // 1. Parse & Validate Body
       let lookbackDays = 1;
-      try {
-        const body = await req.json();
-        if (body && typeof body.lookbackDays === "number") {
-          lookbackDays = body.lookbackDays;
+      const rawText = await req.text();
+
+      if (rawText.trim()) {
+        try {
+          const body = SyncRequestSchema.parse(JSON.parse(rawText));
+          if (body.lookbackDays) {
+            lookbackDays = body.lookbackDays;
+          }
+        } catch (err) {
+          throw new Error(`Invalid sync payload: ${(err as Error).message}`);
         }
-      } catch {
-        // If Body is empty, keep default (1 day)
       }
 
-      // 2. Run the main sync logic with the specific timeframe
+      // 2. Run the main sync logic
       const totalSynced = await this.service.syncRecentData(lookbackDays);
 
       if (totalSynced > 0) {
@@ -25,7 +30,6 @@ export class SyncController {
         console.log("No changes detected.");
       }
 
-      // Success Response
       return new Response(
         JSON.stringify({
           success: true,
@@ -40,7 +44,7 @@ export class SyncController {
 
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
   }

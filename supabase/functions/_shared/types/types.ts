@@ -1,34 +1,39 @@
-export type ClockifyUser = {
-  id: string;
-  name: string;
-  email: string;
-  status: string;
-};
+import { z } from "npm:zod";
 
-export type ClockifyClient = {
-  id: string;
-  name: string;
-};
+export const SyncRequestSchema = z.object({
+  lookbackDays: z.number().int().positive().optional(),
+});
+export const ClockifyUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().email().optional().nullable(),
+  status: z.string().optional(),
+});
 
-export type ClockifyProject = {
-  id: string;
-  name: string;
-  clientId: string | null;
-};
+export const ClockifyClientSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
 
-export type ClockifyTimeInterval = {
-  start: string;
-  end: string;
-  duration: string;
-};
+export const ClockifyProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  clientId: z.string().nullable().optional(),
+});
 
-export type ClockifyTimeEntry = {
-  id: string;
-  description: string;
-  userId: string;
-  projectId: string | null;
-  timeInterval: ClockifyTimeInterval;
-};
+export const ClockifyTimeIntervalSchema = z.object({
+  start: z.string().datetime(), // Enforces strict ISO date strings
+  end: z.string().datetime().nullable().optional(),
+  duration: z.string().nullable().optional(),
+});
+
+export const ClockifyTimeEntrySchema = z.object({
+  id: z.string(),
+  description: z.string().nullable().optional(),
+  userId: z.string(),
+  projectId: z.string().nullable().optional(),
+  timeInterval: ClockifyTimeIntervalSchema,
+});
 
 export type SyncResult = {
   synced: number;
@@ -76,3 +81,10 @@ export type SlackPayload = {
   text: string;
   blocks?: SlackBlock[];
 };
+
+export type ClockifyUser = z.infer<typeof ClockifyUserSchema>;
+export type ClockifyClient = z.infer<typeof ClockifyClientSchema>;
+export type ClockifyProject = z.infer<typeof ClockifyProjectSchema>;
+export type ClockifyTimeInterval = z.infer<typeof ClockifyTimeIntervalSchema>;
+export type ClockifyTimeEntry = z.infer<typeof ClockifyTimeEntrySchema>;
+export type SyncRequestBody = z.infer<typeof SyncRequestSchema>;

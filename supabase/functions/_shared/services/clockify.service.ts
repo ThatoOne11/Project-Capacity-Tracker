@@ -1,9 +1,14 @@
 import {
   ClockifyClient,
+  ClockifyClientSchema,
   ClockifyProject,
+  ClockifyProjectSchema,
   ClockifyTimeEntry,
+  ClockifyTimeEntrySchema,
   ClockifyUser,
+  ClockifyUserSchema,
 } from "../../_shared/types/types.ts";
+import { z } from "npm:zod";
 
 export class ClockifyService {
   private readonly baseUrl = "https://docs.clockify.me/api/v1";
@@ -13,32 +18,32 @@ export class ClockifyService {
     this.headers = { "X-Api-Key": apiKey };
   }
 
-  fetchUsers(): Promise<ClockifyUser[]> {
-    return this.get<ClockifyUser[]>(`/workspaces/${this.workspaceId}/users`);
+  async fetchUsers(): Promise<ClockifyUser[]> {
+    const data = await this.get(`/workspaces/${this.workspaceId}/users`);
+    return z.array(ClockifyUserSchema).parse(data);
   }
 
-  fetchClients(): Promise<ClockifyClient[]> {
-    return this.get<ClockifyClient[]>(
-      `/workspaces/${this.workspaceId}/clients`,
-    );
+  async fetchClients(): Promise<ClockifyClient[]> {
+    const data = await this.get(`/workspaces/${this.workspaceId}/clients`);
+    return z.array(ClockifyClientSchema).parse(data);
   }
 
-  fetchProjects(): Promise<ClockifyProject[]> {
-    return this.get<ClockifyProject[]>(
-      `/workspaces/${this.workspaceId}/projects`,
-    );
+  async fetchProjects(): Promise<ClockifyProject[]> {
+    const data = await this.get(`/workspaces/${this.workspaceId}/projects`);
+    return z.array(ClockifyProjectSchema).parse(data);
   }
 
-  fetchUserTimeEntries(
+  async fetchUserTimeEntries(
     userId: string,
     start: string,
     page: number,
     pageSize = 50,
   ): Promise<ClockifyTimeEntry[]> {
     const query = `start=${start}&page=${page}&page-size=${pageSize}`;
-    return this.get<ClockifyTimeEntry[]>(
+    const data = await this.get(
       `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${query}`,
     );
+    return z.array(ClockifyTimeEntrySchema).parse(data);
   }
 
   // Fetches entries within a time window for a specific user.
@@ -64,14 +69,14 @@ export class ClockifyService {
 
       if (end) params.append("end", end);
 
-      const response = await this.get<ClockifyTimeEntry[]>(
+      const response = await this.get(
         `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
       );
 
-      allEntries.push(...response);
+      const parsedChunk = z.array(ClockifyTimeEntrySchema).parse(response);
+      allEntries.push(...parsedChunk);
 
-      // If we got a full page, there might be more. If less, we are done.
-      if (response.length < pageSize) {
+      if (parsedChunk.length < pageSize) {
         hasMore = false;
       } else {
         page++;
@@ -81,7 +86,7 @@ export class ClockifyService {
     return allEntries;
   }
 
-  private async get<T>(endpoint: string): Promise<T> {
+  private async get(endpoint: string): Promise<unknown> {
     const res = await fetch(`${this.baseUrl}${endpoint}`, {
       headers: this.headers,
     });
