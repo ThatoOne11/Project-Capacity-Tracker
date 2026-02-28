@@ -30,7 +30,6 @@ export class SyncController {
         console.log("No changes detected.");
       }
 
-      // Success Response
       return new Response(
         JSON.stringify({
           success: true,

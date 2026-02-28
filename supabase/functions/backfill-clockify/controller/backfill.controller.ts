@@ -12,7 +12,7 @@ export class BackfillController {
 
       if (rawText.trim()) {
         try {
-          // Zod automatically throws a highly descriptive error if this fails!
+          // Zod throws a nice error if this fails
           body = BackfillRequestSchema.parse(JSON.parse(rawText));
         } catch (err) {
           throw new Error(`Invalid JSON payload: ${(err as Error).message}`);
