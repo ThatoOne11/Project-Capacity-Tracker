@@ -2,7 +2,6 @@ import { z } from "npm:zod";
 
 export const AirtableRecordSchema = z.object({
   id: z.string(),
-  // Explicitly tell Zod that the keys are strings, and the values are unknown
   fields: z.record(z.string(), z.unknown()).transform((fields) => ({
     "Name": typeof fields["Name"] === "string" ? fields["Name"] : "",
     "Actual Hours": typeof fields["Actual Hours"] === "number"
