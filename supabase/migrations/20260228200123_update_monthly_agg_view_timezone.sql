@@ -1,4 +1,3 @@
--- Drops the old view and replaces it with the SAST timezone-aware version
 CREATE OR REPLACE VIEW monthly_aggregates_view WITH (security_invoker = on) AS
 SELECT
     u.name AS user_name,

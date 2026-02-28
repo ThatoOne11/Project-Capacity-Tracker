@@ -23,13 +23,13 @@ export class SyncOrchestratorService {
     // 1. Define the Sync Jobs configuration
     const jobs: SyncJob[] = [
       {
-        name: "Calendar Table Sync",
+        name: "People Assignments Table",
         sourceView: "monthly_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.tableId,
         allowInserts: false, // Strict: Updates only
       },
       {
-        name: "Payroll Table Sync",
+        name: "Payroll Actuals Table",
         sourceView: "payroll_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.payrollTableId,
         allowInserts: true, // Automation: Create missing records
@@ -38,17 +38,17 @@ export class SyncOrchestratorService {
 
     // 2. Process Each Job
     for (const job of jobs) {
-      console.log(`\n--- Starting Job: ${job.name} ---`);
+      console.log(`[Orchestrator] Starting Job: ${job.name}`);
 
       if (!job.destinationTableId) {
         console.warn(
-          `Skipping ${job.name}: No destination table ID configured.`,
+          `[Orchestrator] Skipping ${job.name}: No destination table ID configured.`,
         );
         continue;
       }
 
       await this.executeJob(job, totalStats, logMessages);
-      console.log(`--- Finished Job: ${job.name} ---`);
+      console.log(`[Orchestrator] Finished Job: ${job.name}`);
     }
 
     return { stats: totalStats, details: logMessages };
