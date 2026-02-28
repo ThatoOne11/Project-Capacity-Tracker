@@ -1,3 +1,8 @@
+import { z } from "npm:zod";
+
+export const SyncRequestSchema = z.object({
+  lookbackDays: z.number().int().positive().optional(),
+});
 export type ClockifyUser = {
   id: string;
   name: string;
@@ -76,3 +81,5 @@ export type SlackPayload = {
   text: string;
   blocks?: SlackBlock[];
 };
+
+export type SyncRequestBody = z.infer<typeof SyncRequestSchema>;
