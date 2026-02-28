@@ -12,6 +12,7 @@ export const AIRTABLE_CONFIG = {
     pat: Deno.env.get("AIRTABLE_PAT")!,
     baseId: Deno.env.get("AIRTABLE_BASE_ID")!,
     tableId: Deno.env.get("AIRTABLE_TABLE_ID")!,
+    payrollTableId: Deno.env.get("AIRTABLE_PAYROLL_TABLE_ID")!,
 };
 
 export const SLACK_CONFIG = {

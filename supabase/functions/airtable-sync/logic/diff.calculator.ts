@@ -1,5 +1,6 @@
 import {
   AggregateRow,
+  AirtableInsert,
   AirtableRecord,
   AirtableUpdate,
   SyncStats,
@@ -10,41 +11,65 @@ export class AirtableDiffCalculator {
   static calculateDiffs(
     sourceRows: AggregateRow[],
     destinationRecords: AirtableRecord[],
-  ): { updates: AirtableUpdate[]; stats: SyncStats } {
+    allowInserts: boolean,
+  ): {
+    updates: AirtableUpdate[];
+    inserts: AirtableInsert[];
+    stats: SyncStats;
+  } {
     const updates: AirtableUpdate[] = [];
-    const stats: SyncStats = { updated: 0, skipped: 0, missing: 0 };
+    const inserts: AirtableInsert[] = [];
+    const stats: SyncStats = {
+      updated: 0,
+      inserted: 0,
+      skipped: 0,
+      missing: 0,
+    };
 
-    // Track which Airtable records we have "touched" (matched with Supabase)
     const touchedAirtableIds = new Set<string>();
 
     // 1. Build Map (Normalized)
     const airtableMap = new Map<string, AirtableRecord>(
       destinationRecords.map((rec) => [
-        rec.fields.Name.trim().toLowerCase(),
+        rec.fields.Name?.trim().toLowerCase() || "",
         rec,
       ]),
     );
 
-    // 2. Forward Pass: Supabase -> Airtable (Updates & Inserts)
+    // 1. Forward Pass: Supabase -> Airtable
     for (const row of sourceRows) {
       const lookupKey = `${row.user_name} - ${row.project_name} - ${row.month}`
         .trim()
         .toLowerCase();
 
       const match = airtableMap.get(lookupKey);
+      const supabaseHours = parseFloat(row.total_hours);
 
       if (!match) {
-        stats.missing++; // Record doesn't exist in Airtable yet
+        if (allowInserts) {
+          // Feature Flag: Package a brand new record for Airtable
+          inserts.push({
+            fields: {
+              "User": row.user_name,
+              "Project": row.project_name,
+              "Month": row.month,
+              "Actual Hours": supabaseHours,
+            },
+          });
+          stats.inserted++;
+          console.log(
+            `NEW RECORD: Queued ${lookupKey} for creation (${supabaseHours} hrs)`,
+          );
+        } else {
+          stats.missing++; // Just skip and log it
+        }
         continue;
       }
 
-      touchedAirtableIds.add(match.id); // Mark as visited
+      touchedAirtableIds.add(match.id);
 
-      const supabaseHours = parseFloat(row.total_hours);
-      // Treat undefined (blank) as 0 for comparison
       const airtableHours = match.fields["Actual Hours"] || 0;
 
-      // 3. Epsilon Check (Floating Point Math)
       if (Math.abs(supabaseHours - airtableHours) > 0.01) {
         console.log(
           `MATCH FOUND: Updating ${lookupKey} (${airtableHours} -> ${supabaseHours})`,
@@ -60,7 +85,7 @@ export class AirtableDiffCalculator {
       }
     }
 
-    // 3. Reverse Pass: Airtable -> Supabase (Detecting Zeros)
+    // 2. Reverse Pass: Airtable -> Supabase (Detecting Zeros)
     // If a record exists in Airtable, has hours > 0, but was NOT touched above,
     // it means it no longer exists in Supabase (or has 0 hours). We must zero it out.
     for (const record of destinationRecords) {
@@ -78,6 +103,6 @@ export class AirtableDiffCalculator {
       }
     }
 
-    return { updates, stats };
+    return { updates, inserts, stats };
   }
 }

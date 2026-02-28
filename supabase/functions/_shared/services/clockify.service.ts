@@ -1,9 +1,14 @@
 import {
   ClockifyClient,
+  ClockifyClientSchema,
   ClockifyProject,
+  ClockifyProjectSchema,
   ClockifyTimeEntry,
+  ClockifyTimeEntrySchema,
   ClockifyUser,
+  ClockifyUserSchema,
 } from "../../_shared/types/types.ts";
+import { z } from "npm:zod";
 
 export class ClockifyService {
   private readonly baseUrl = "https://docs.clockify.me/api/v1";
@@ -13,58 +18,75 @@ export class ClockifyService {
     this.headers = { "X-Api-Key": apiKey };
   }
 
-  fetchUsers(): Promise<ClockifyUser[]> {
-    return this.get<ClockifyUser[]>(`/workspaces/${this.workspaceId}/users`);
+  async fetchUsers(): Promise<ClockifyUser[]> {
+    const data = await this.get(`/workspaces/${this.workspaceId}/users`);
+    return z.array(ClockifyUserSchema).parse(data);
   }
 
-  fetchClients(): Promise<ClockifyClient[]> {
-    return this.get<ClockifyClient[]>(
-      `/workspaces/${this.workspaceId}/clients`,
-    );
+  async fetchClients(): Promise<ClockifyClient[]> {
+    const data = await this.get(`/workspaces/${this.workspaceId}/clients`);
+    return z.array(ClockifyClientSchema).parse(data);
   }
 
-  fetchProjects(): Promise<ClockifyProject[]> {
-    return this.get<ClockifyProject[]>(
-      `/workspaces/${this.workspaceId}/projects`,
-    );
+  async fetchProjects(): Promise<ClockifyProject[]> {
+    const data = await this.get(`/workspaces/${this.workspaceId}/projects`);
+    return z.array(ClockifyProjectSchema).parse(data);
   }
 
-  fetchUserTimeEntries(
+  async fetchUserTimeEntries(
     userId: string,
     start: string,
     page: number,
     pageSize = 50,
   ): Promise<ClockifyTimeEntry[]> {
     const query = `start=${start}&page=${page}&page-size=${pageSize}`;
-    return this.get<ClockifyTimeEntry[]>(
+    const data = await this.get(
       `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${query}`,
     );
+    return z.array(ClockifyTimeEntrySchema).parse(data);
   }
 
   // Fetches entries within a time window for a specific user.
   // Hydrated=true ensures we get project names even if they are new.
-  fetchRecentUserEntries(
+  // Fetches ALL entries within a time window (handles pagination automatically)
+  async fetchRecentUserEntries(
     userId: string,
     start: string,
     end?: string,
   ): Promise<ClockifyTimeEntry[]> {
-    const params = new URLSearchParams({
-      start,
-      hydrated: "true",
-      "page-size": "200", // Large batch for recent changes
-    });
+    let page = 1;
+    const pageSize = 200;
+    const allEntries: ClockifyTimeEntry[] = [];
+    let hasMore = true;
 
-    // Only add 'end' if it was actually passed in
-    if (end) {
-      params.append("end", end);
+    while (hasMore) {
+      const params = new URLSearchParams({
+        start,
+        hydrated: "true",
+        "page-size": pageSize.toString(),
+        page: page.toString(),
+      });
+
+      if (end) params.append("end", end);
+
+      const response = await this.get(
+        `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
+      );
+
+      const parsedChunk = z.array(ClockifyTimeEntrySchema).parse(response);
+      allEntries.push(...parsedChunk);
+
+      if (parsedChunk.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
     }
 
-    return this.get<ClockifyTimeEntry[]>(
-      `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
-    );
+    return allEntries;
   }
 
-  private async get<T>(endpoint: string): Promise<T> {
+  private async get(endpoint: string): Promise<unknown> {
     const res = await fetch(`${this.baseUrl}${endpoint}`, {
       headers: this.headers,
     });

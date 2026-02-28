@@ -1,4 +1,8 @@
-import { AirtableRecord } from "../types/types.ts";
+import {
+  AirtableInsert,
+  AirtableRecord,
+  AirtableResponseSchema,
+} from "../types/types.ts";
 
 export class AirtableService {
   private readonly baseUrl = "https://api.airtable.com/v0";
@@ -34,9 +38,11 @@ export class AirtableService {
         throw new Error(`Airtable Fetch Failed: ${await res.text()}`);
       }
 
-      const data = await res.json();
+      const rawData = await res.json();
+      const data = AirtableResponseSchema.parse(rawData);
+
       if (data.records) {
-        allRecords.push(...(data.records as AirtableRecord[]));
+        allRecords.push(...data.records);
       }
 
       offset = data.offset;
@@ -83,5 +89,38 @@ export class AirtableService {
       }
     }
     console.log("Airtable updates complete.");
+  }
+
+  async createRecords(inserts: AirtableInsert[]): Promise<void> {
+    if (inserts.length === 0) return;
+
+    const url = `${this.baseUrl}/${this.baseId}/${this.tableId}`;
+    console.log(`Pushing ${inserts.length} new records to Airtable...`);
+
+    // Airtable limit: 10 records per request
+    for (let i = 0; i < inserts.length; i += 10) {
+      const chunk = inserts.slice(i, i + 10);
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: this.headers,
+          body: JSON.stringify({
+            records: chunk,
+            typecast: true, // Auto-links User and Project names
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Batch insert failed: ${await res.text()}`);
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      } catch (err) {
+        console.error(`Batch Insert ${i / 10 + 1} Error:`, err);
+        throw err;
+      }
+    }
+    console.log("Airtable inserts complete.");
   }
 }
