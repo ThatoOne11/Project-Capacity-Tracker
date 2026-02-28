@@ -6,7 +6,7 @@ export const SyncRequestSchema = z.object({
 export const ClockifyUserSchema = z.object({
   id: z.string(),
   name: z.string(),
-  email: z.string().email().optional().nullable(),
+  email: z.email().optional().nullable(),
   status: z.string().optional(),
 });
 
@@ -22,8 +22,8 @@ export const ClockifyProjectSchema = z.object({
 });
 
 export const ClockifyTimeIntervalSchema = z.object({
-  start: z.string().datetime(), // Enforces strict ISO date strings
-  end: z.string().datetime().nullable().optional(),
+  start: z.string(),
+  end: z.string().nullable().optional(),
   duration: z.string().nullable().optional(),
 });
 
