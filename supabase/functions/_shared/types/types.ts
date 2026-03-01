@@ -6,10 +6,13 @@ export const SyncRequestSchema = z.object({
 
 export const ClockifyUserSchema = z.object({
   id: z.string(),
-  name: z.string().nullish().transform((val) => val || "Unknown User"),
+  name: z.string().nullish(),
   email: z.email().optional().nullable(),
   status: z.string().optional(),
-});
+}).transform((user) => ({
+  ...user,
+  name: user.name || user.email || "Unknown User",
+}));
 
 export const ClockifyClientSchema = z.object({
   id: z.string(),
