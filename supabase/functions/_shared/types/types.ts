@@ -3,21 +3,22 @@ import { z } from "npm:zod";
 export const SyncRequestSchema = z.object({
   lookbackDays: z.number().int().positive().optional(),
 });
+
 export const ClockifyUserSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: z.string().nullish().transform((val) => val || "Unknown User"),
   email: z.email().optional().nullable(),
   status: z.string().optional(),
 });
 
 export const ClockifyClientSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: z.string().nullish().transform((val) => val || "Unknown Client"),
 });
 
 export const ClockifyProjectSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: z.string().nullish().transform((val) => val || "Unknown Project"),
   clientId: z.string().nullable().optional(),
 });
 
