@@ -1,7 +1,7 @@
 import { z } from "npm:zod";
 
 export const BackfillRequestSchema = z.object({
-  startDate: z.string().optional(),
+  startDate: z.iso.datetime().optional(),
   userId: z.string().optional(),
 });
 

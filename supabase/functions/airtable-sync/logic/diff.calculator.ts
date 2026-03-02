@@ -94,6 +94,9 @@ export class AirtableDiffCalculator {
 
         // STRICT CHECK: If it is NOT the number 0 (e.g. 5.0, null, or undefined), force it to 0.
         if (rawValue !== 0) {
+          console.log(
+            `ZEROING OUT: ${record.fields["Name"]} (Was: ${rawValue})`,
+          );
           updates.push({
             id: record.id,
             fields: { "Actual Hours": 0 },
