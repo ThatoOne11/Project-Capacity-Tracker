@@ -43,16 +43,16 @@ export class AirtableDiffCalculator {
         .toLowerCase();
 
       const match = airtableMap.get(lookupKey);
-      const supabaseHours = parseFloat(row.total_hours);
+      const supabaseHours = parseFloat(row.total_hours) || 0;
 
       if (!match) {
         if (allowInserts) {
           // Feature Flag: Package a brand new record for Airtable
           inserts.push({
             fields: {
-              "User": row.user_name,
-              "Project": row.project_name,
-              "Month": row.month,
+              User: row.user_name,
+              Project: row.project_name,
+              Month: row.month,
               "Actual Hours": supabaseHours,
             },
           });
