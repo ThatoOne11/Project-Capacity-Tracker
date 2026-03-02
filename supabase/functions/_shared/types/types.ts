@@ -4,30 +4,38 @@ export const SyncRequestSchema = z.object({
   lookbackDays: z.number().int().positive().optional(),
 });
 
-export const ClockifyUserSchema = z.object({
-  id: z.string(),
-  name: z.string().nullish(),
-  email: z.email().optional().nullable(),
-  status: z.string().optional(),
-}).transform((user) => ({
-  ...user,
-  name: user.name || user.email || "Unknown User",
-}));
+export const ClockifyUserSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().nullish(),
+    email: z.email().optional().nullable(),
+    status: z.string().optional(),
+  })
+  .transform((user) => ({
+    ...user,
+    name: user.name || user.email || "Unknown User",
+  }));
 
 export const ClockifyClientSchema = z.object({
   id: z.string(),
-  name: z.string().nullish().transform((val) => val || "Unknown Client"),
+  name: z
+    .string()
+    .nullish()
+    .transform((val) => val || "Unknown Client"),
 });
 
 export const ClockifyProjectSchema = z.object({
   id: z.string(),
-  name: z.string().nullish().transform((val) => val || "Unknown Project"),
+  name: z
+    .string()
+    .nullish()
+    .transform((val) => val || "Unknown Project"),
   clientId: z.string().nullable().optional(),
 });
 
 export const ClockifyTimeIntervalSchema = z.object({
-  start: z.string(),
-  end: z.string().nullable().optional(),
+  start: z.iso.datetime(),
+  end: z.iso.datetime().nullable().optional(),
   duration: z.string().nullable().optional(),
 });
 

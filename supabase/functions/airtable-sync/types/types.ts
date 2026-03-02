@@ -3,10 +3,11 @@ import { z } from "npm:zod";
 export const AirtableRecordSchema = z.object({
   id: z.string(),
   fields: z.record(z.string(), z.unknown()).transform((fields) => ({
-    "Name": typeof fields["Name"] === "string" ? fields["Name"] : "",
-    "Actual Hours": typeof fields["Actual Hours"] === "number"
-      ? fields["Actual Hours"]
-      : 0,
+    Name: typeof fields["Name"] === "string" ? fields["Name"] : "",
+    "Actual Hours":
+      typeof fields["Actual Hours"] === "number"
+        ? fields["Actual Hours"]
+        : undefined,
   })),
 });
 
@@ -38,9 +39,9 @@ export type AirtableUpdate = {
 
 export type AirtableInsert = {
   fields: {
-    "User": string;
-    "Project": string;
-    "Month": string;
+    User: string;
+    Project: string;
+    Month: string;
     "Actual Hours": number;
   };
 };

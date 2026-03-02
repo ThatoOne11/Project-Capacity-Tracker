@@ -7,7 +7,7 @@ import {
 } from "../types/types.ts";
 
 export class AirtableDiffCalculator {
-  //Compares Supabase rows vs Airtable records and returns exactly what needs to change.
+  //Compares Supabase rows vs Airtable records and returns exact changes needed.
   static calculateDiffs(
     sourceRows: AggregateRow[],
     destinationRecords: AirtableRecord[],
@@ -28,7 +28,7 @@ export class AirtableDiffCalculator {
 
     const touchedAirtableIds = new Set<string>();
 
-    // 1. Build Map (Normalized)
+    // 1. Build Normalized Airtable Map
     const airtableMap = new Map<string, AirtableRecord>(
       destinationRecords.map((rec) => [
         rec.fields.Name?.trim().toLowerCase() || "",
@@ -36,23 +36,23 @@ export class AirtableDiffCalculator {
       ]),
     );
 
-    // 1. Forward Pass: Supabase -> Airtable
+    // 2. Forward Pass: Supabase -> Airtable
     for (const row of sourceRows) {
       const lookupKey = `${row.user_name} - ${row.project_name} - ${row.month}`
         .trim()
         .toLowerCase();
 
       const match = airtableMap.get(lookupKey);
-      const supabaseHours = parseFloat(row.total_hours);
+      const supabaseHours = parseFloat(row.total_hours) || 0;
 
+      // Handle Missing Records (Inserts)
       if (!match) {
         if (allowInserts) {
-          // Feature Flag: Package a brand new record for Airtable
           inserts.push({
             fields: {
-              "User": row.user_name,
-              "Project": row.project_name,
-              "Month": row.month,
+              User: row.user_name,
+              Project: row.project_name,
+              Month: row.month,
               "Actual Hours": supabaseHours,
             },
           });
@@ -61,18 +61,30 @@ export class AirtableDiffCalculator {
             `NEW RECORD: Queued ${lookupKey} for creation (${supabaseHours} hrs)`,
           );
         } else {
-          stats.missing++; // Just skip and log it
+          stats.missing++; // Skip if inserts aren't allowed on this table
         }
         continue;
       }
 
+      // Handle Existing Records (Updates)
       touchedAirtableIds.add(match.id);
 
-      const airtableHours = match.fields["Actual Hours"] || 0;
+      const rawAirtableHours = match.fields["Actual Hours"];
+      const airtableHours =
+        typeof rawAirtableHours === "number" ? rawAirtableHours : 0;
 
-      if (Math.abs(supabaseHours - airtableHours) > 0.01) {
+      // Evaluate Update Triggers
+      const hasNumericalDifference =
+        Math.abs(supabaseHours - airtableHours) > 0.01;
+      const isBlankButShouldBeZero =
+        supabaseHours === 0 && rawAirtableHours === undefined;
+
+      if (hasNumericalDifference || isBlankButShouldBeZero) {
+        const prevValueLog =
+          rawAirtableHours === undefined ? "Blank/Undefined" : airtableHours;
+
         console.log(
-          `MATCH FOUND: Updating ${lookupKey} (${airtableHours} -> ${supabaseHours})`,
+          `MATCH FOUND: Updating ${lookupKey} (${prevValueLog} -> ${supabaseHours})`,
         );
 
         updates.push({
@@ -85,15 +97,18 @@ export class AirtableDiffCalculator {
       }
     }
 
-    // 2. Reverse Pass: Airtable -> Supabase (Detecting Zeros)
-    // If a record exists in Airtable, has hours > 0, but was NOT touched above,
-    // it means it no longer exists in Supabase (or has 0 hours). We must zero it out.
+    // 3. Reverse Pass: Airtable -> Supabase (Detecting Zeros/Deletions)
     for (const record of destinationRecords) {
+      // If a record exists in Airtable but wasn't in our Supabase view, it needs to be zeroed.
       if (!touchedAirtableIds.has(record.id)) {
         const rawValue = record.fields["Actual Hours"];
 
-        // STRICT CHECK: If it is NOT the number 0 (e.g. 5.0, null, or undefined), force it to 0.
+        // Zero out if it isn't strictly 0 already
         if (rawValue !== 0) {
+          console.log(
+            `ZEROING OUT: ${record.fields["Name"]} (Was: ${rawValue})`,
+          );
+
           updates.push({
             id: record.id,
             fields: { "Actual Hours": 0 },
