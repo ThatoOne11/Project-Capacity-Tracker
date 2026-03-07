@@ -262,13 +262,17 @@ export class ReferenceSyncService {
         const newId = await this.airtable.createReferenceRecord(tableId, {
           Project: [data.projectId],
           Month: data.isoDate,
+          // Zeroing out the manual numeric fields
+          "Commitment Hours": 0,
+          "Hours to be Paid": 0,
+          "Original Invoice AMount": 0,
         });
         idMap.set(key, newId);
-        console.log(`[ReferenceSync] ✔️ Created Project Assignment: ${key}`);
+        console.log(`[ReferenceSync] Created Project Assignment: ${key}`);
       } catch (err: unknown) {
         const error = err as Error;
         console.error(
-          `[ReferenceSync] ❌ Failed to create Project Assignment ${key}:`,
+          `[ReferenceSync] Failed to create Project Assignment ${key}:`,
           error.message,
         );
       }
