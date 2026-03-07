@@ -1,4 +1,5 @@
 import { z } from "npm:zod";
+import { SyncStrategy } from "../consts/consts.ts";
 
 export const AirtableRecordSchema = z.object({
   id: z.string(),
