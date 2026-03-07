@@ -7,12 +7,12 @@ import {
   SyncJob,
   SyncStats,
 } from "../types/types.ts";
-
 export class AirtableDiffCalculator {
   static calculateDiffs(
     sourceRows: AggregateRow[],
     destinationRecords: AirtableRecord[],
     job: SyncJob,
+    projectAssignmentMap: Map<string, string> = new Map(),
   ): {
     updates: AirtableUpdate[];
     inserts: AirtableInsert[];
@@ -24,6 +24,7 @@ export class AirtableDiffCalculator {
       stats: { updated: 0, inserted: 0, skipped: 0, missing: 0 },
       touchedAirtableIds: new Set<string>(),
       job,
+      projectAssignmentMap,
     };
 
     const airtableMap = this.buildAirtableMap(destinationRecords, job.strategy);
@@ -119,9 +120,23 @@ export class AirtableDiffCalculator {
         "Actual Hours": supabaseHours,
       };
     } else {
+      const expectedName = `${row.project_name} - ${row.month}`.trim()
+        .toLowerCase();
+      const projectAssignmentId = context.projectAssignmentMap.get(
+        expectedName,
+      );
+
+      if (!projectAssignmentId) {
+        console.warn(
+          `[Diff] Missing Project Assignment ID for ${expectedName}. Skipping row.`,
+        );
+        context.stats.missing++;
+        return;
+      }
+
       fields = {
         Person: [row.airtable_user_id],
-        "Project Assignment": [`${row.project_name} - ${row.month}`],
+        "Project Assignment": [projectAssignmentId],
         "Actual Hours": supabaseHours,
       };
     }

@@ -16,6 +16,9 @@ export const AIRTABLE_CONFIG = {
     employeesTableId: Deno.env.get("AIRTABLE_EMPLOYEES_TABLE_ID")!,
     projectsTableId: Deno.env.get("AIRTABLE_PROJECTS_TABLE_ID")!,
     clientsTableId: Deno.env.get("AIRTABLE_CLIENTS_TABLE_ID")!,
+    projectAssignmentsTableId: Deno.env.get(
+        "AIRTABLE_PROJECT_ASSIGNMENTS_TABLE_ID",
+    )!,
 };
 
 export const SLACK_CONFIG = {

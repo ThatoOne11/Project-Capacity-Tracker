@@ -66,28 +66,33 @@ export class SyncOrchestratorService {
       throw new Error(`Supabase Error (${job.sourceView}): ${dbError.message}`);
     }
 
+    let projectAssignmentMap = new Map<string, string>();
+    if (job.strategy === "ASSIGNMENT" && job.allowInserts) {
+      projectAssignmentMap = await this.referenceSync
+        .getOrBuildProjectAssignments(
+          sourceData as AggregateRow[],
+        );
+    }
+
     const destinationRecords = await this.airtable.fetchRecords(
       job.destinationTableId,
       job.strategy,
     );
 
-    // C. Calculate Differences
     const { updates, inserts, stats } = AirtableDiffCalculator.calculateDiffs(
       sourceData as AggregateRow[],
       destinationRecords,
       job,
+      projectAssignmentMap,
     );
 
-    // D. Execute API Calls
     if (inserts.length > 0) {
       await this.airtable.createRecords(job.destinationTableId, inserts);
     }
-
     if (updates.length > 0) {
       await this.airtable.updateRecords(job.destinationTableId, updates);
     }
 
-    // E. Aggregate Stats
     totalStats.updated += stats.updated;
     totalStats.inserted += stats.inserted;
     totalStats.skipped += stats.skipped;

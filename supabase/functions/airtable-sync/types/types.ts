@@ -53,6 +53,8 @@ export type DiffContext = {
   inserts: AirtableInsert[];
   stats: SyncStats;
   touchedAirtableIds: Set<string>;
+  job: SyncJob;
+  projectAssignmentMap: Map<string, string>;
 };
 
 export type ViewRow = {

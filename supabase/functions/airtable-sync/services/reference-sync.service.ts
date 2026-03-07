@@ -1,7 +1,12 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { AirtableService } from "./airtable.service.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
-import { ReferenceRecord, ViewRow } from "../types/types.ts";
+import {
+  AggregateRow,
+  AirtableRecord,
+  ReferenceRecord,
+  ViewRow,
+} from "../types/types.ts";
 
 export class ReferenceSyncService {
   constructor(
@@ -171,6 +176,90 @@ export class ReferenceSyncService {
         const error = err as Error;
         console.error(
           `[ReferenceSync] Failed to create/link ${record.name}:`,
+          error.message,
+        );
+      }
+    }
+  }
+
+  async getOrBuildProjectAssignments(
+    sourceRows: AggregateRow[],
+  ): Promise<Map<string, string>> {
+    console.log("[ReferenceSync] Verifying Project Assignments exist...");
+    const tableId = AIRTABLE_CONFIG.projectAssignmentsTableId;
+
+    const existingRecords = await this.airtable.fetchRecords(
+      tableId,
+      "ASSIGNMENT",
+    );
+    const idMap = this.buildAssignmentMap(existingRecords);
+    const missingAssignments = this.identifyMissingAssignments(
+      sourceRows,
+      idMap,
+    );
+
+    if (missingAssignments.size > 0) {
+      await this.createMissingAssignments(tableId, missingAssignments, idMap);
+    }
+
+    return idMap;
+  }
+
+  private buildAssignmentMap(records: AirtableRecord[]): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const rec of records) {
+      const name = rec.fields["Name"] as string | undefined;
+      if (name) map.set(name.trim().toLowerCase(), rec.id);
+    }
+    return map;
+  }
+
+  private identifyMissingAssignments(
+    sourceRows: AggregateRow[],
+    existingMap: Map<string, string>,
+  ): Map<string, { projectId: string; month: string }> {
+    const missing = new Map<string, { projectId: string; month: string }>();
+
+    for (const row of sourceRows) {
+      if (!row.airtable_project_id) continue;
+      const expectedName = `${row.project_name} - ${row.month}`.trim()
+        .toLowerCase();
+
+      if (!existingMap.has(expectedName) && !missing.has(expectedName)) {
+        missing.set(expectedName, {
+          projectId: row.airtable_project_id,
+          month: row.month,
+        });
+      }
+    }
+    return missing;
+  }
+
+  private async createMissingAssignments(
+    tableId: string,
+    missing: Map<string, { projectId: string; month: string }>,
+    idMap: Map<string, string>,
+  ): Promise<void> {
+    console.log(
+      `[ReferenceSync] Creating ${missing.size} missing Project Assignments...`,
+    );
+
+    for (const [key, data] of missing.entries()) {
+      const [mName, year] = data.month.split(" ");
+      const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
+      const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
+
+      try {
+        const newId = await this.airtable.createReferenceRecord(tableId, {
+          Project: [data.projectId],
+          Month: isoDate,
+        });
+        idMap.set(key, newId);
+        console.log(`[ReferenceSync] Created Project Assignment: ${key}`);
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error(
+          `[ReferenceSync] Failed to create Project Assignment ${key}:`,
           error.message,
         );
       }
