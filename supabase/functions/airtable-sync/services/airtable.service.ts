@@ -31,7 +31,8 @@ export class AirtableService {
         params.append("fields[]", "Month");
         params.append("fields[]", "Actual Hours");
       } else if (strategy === "ASSIGNMENT") {
-        params.append("fields[]", "Name");
+        params.append("fields[]", "Person");
+        params.append("fields[]", "Project Assignment");
         params.append("fields[]", "Actual Hours");
       } else if (strategy === "PROJECT_ASSIGNMENT") {
         // Pull pure IDs and Dates to avoid naming mismatches!

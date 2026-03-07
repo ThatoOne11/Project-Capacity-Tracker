@@ -55,8 +55,17 @@ export class AirtableDiffCalculator {
         const key = `${userId}_${projectId}_${month || ""}`;
         map.set(key, rec);
       } else {
-        const name = (rec.fields["Name"] as string) || "";
-        map.set(name.trim().toLowerCase(), rec);
+        // Pure ID mapping for People Assignments
+        const persons = rec.fields["Person"] as string[] | undefined;
+        const projAssignments = rec.fields["Project Assignment"] as
+          | string[]
+          | undefined;
+
+        const personId = persons?.[0] || "no_person";
+        const projAssigId = projAssignments?.[0] || "no_proj_assig";
+
+        const key = `${personId}_${projAssigId}`;
+        map.set(key, rec);
       }
     }
 
@@ -76,9 +85,18 @@ export class AirtableDiffCalculator {
         const dbProjectId = row.airtable_project_id || "no_project";
         lookupKey = `${dbUserId}_${dbProjectId}_${row.month}`;
       } else {
-        lookupKey = `${row.user_name} - ${row.project_name} - ${row.month}`
-          .trim()
-          .toLowerCase();
+        // Rebuild the IDs to find the exact match
+        const [mName, year] = row.month.split(" ");
+        const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
+        const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
+
+        const projAssigExpectedKey = `${row.airtable_project_id}_${isoDate}`;
+        const projAssigId =
+          context.projectAssignmentMap.get(projAssigExpectedKey) ||
+          "no_proj_assig";
+        const personId = row.airtable_user_id || "no_person";
+
+        lookupKey = `${personId}_${projAssigId}`;
       }
 
       const match = airtableMap.get(lookupKey);
