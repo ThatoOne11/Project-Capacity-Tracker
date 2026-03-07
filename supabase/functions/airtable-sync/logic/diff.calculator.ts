@@ -130,9 +130,6 @@ export class AirtableDiffCalculator {
     }
 
     if (!row.airtable_user_id) {
-      console.warn(
-        `Cannot sync row for ${row.user_name} - Missing Airtable ID`,
-      );
       context.stats.missing++;
       return;
     }
@@ -147,27 +144,16 @@ export class AirtableDiffCalculator {
         "Actual Hours": supabaseHours,
       };
     } else {
-      // Safety Check: Cannot create assignment without a project ID
-      if (!row.airtable_project_id) {
-        console.warn(
-          `[Diff] No Project ID for ${row.user_name} in ${row.month}. Skipping.`,
-        );
-        context.stats.missing++;
-        return;
-      }
-
-      // Rebuild the unbreakable ID key for the lookup
       const [mName, year] = row.month.split(" ");
       const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
       const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
-      const expectedKey = `${row.airtable_project_id}_${isoDate}`;
 
-      const projectAssignmentId = context.projectAssignmentMap.get(expectedKey);
+      const projAssigExpectedKey = `${row.airtable_project_id}_${isoDate}`;
+      const projectAssignmentId = context.projectAssignmentMap.get(
+        projAssigExpectedKey,
+      );
 
       if (!projectAssignmentId) {
-        console.warn(
-          `[Diff] Missing Project Assignment ID for ${expectedKey}. Skipping row.`,
-        );
         context.stats.missing++;
         return;
       }
@@ -176,6 +162,8 @@ export class AirtableDiffCalculator {
         Person: [row.airtable_user_id],
         "Project Assignment": [projectAssignmentId],
         "Actual Hours": supabaseHours,
+        // Auto-zero out Assigned Hours for brand new records
+        "Assigned Hours": 0,
       };
     }
 
@@ -199,10 +187,25 @@ export class AirtableDiffCalculator {
     const isBlankButShouldBeZero = supabaseHours === 0 &&
       rawAirtableHours === undefined;
 
-    if (hasChanged || isBlankButShouldBeZero) {
+    // ✅ NEW: Auto-heal existing records that have blank Assigned Hours
+    const rawAssignedHours = match.fields["Assigned Hours"];
+    const needsAssignedZero = rawAssignedHours === undefined &&
+      context.job.strategy === "ASSIGNMENT";
+
+    if (hasChanged || isBlankButShouldBeZero || needsAssignedZero) {
+      const fields: Record<string, unknown> = {};
+
+      if (hasChanged || isBlankButShouldBeZero) {
+        fields["Actual Hours"] = supabaseHours;
+      }
+
+      if (needsAssignedZero) {
+        fields["Assigned Hours"] = 0;
+      }
+
       context.updates.push({
         id: match.id,
-        fields: { "Actual Hours": supabaseHours },
+        fields,
       });
       context.stats.updated++;
     } else {
