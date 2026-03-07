@@ -2,13 +2,7 @@ import { z } from "npm:zod";
 
 export const AirtableRecordSchema = z.object({
   id: z.string(),
-  fields: z.record(z.string(), z.unknown()).transform((fields) => ({
-    Name: typeof fields["Name"] === "string" ? fields["Name"] : "",
-    "Actual Hours":
-      typeof fields["Actual Hours"] === "number"
-        ? fields["Actual Hours"]
-        : undefined,
-  })),
+  fields: z.record(z.string(), z.unknown()),
 });
 
 export const AirtableResponseSchema = z.object({
@@ -17,7 +11,9 @@ export const AirtableResponseSchema = z.object({
 });
 
 export type AggregateRow = {
+  airtable_user_id: string | null;
   user_name: string;
+  airtable_project_id: string | null;
   project_name: string;
   month: string;
   total_hours: string;
@@ -32,15 +28,13 @@ export type SyncStats = {
 
 export type AirtableUpdate = {
   id: string;
-  fields: {
-    "Actual Hours": number;
-  };
+  fields: { "Actual Hours": number };
 };
 
 export type AirtableInsert = {
   fields: {
-    User: string;
-    Project: string;
+    User: string[];
+    Project: string[];
     Month: string;
     "Actual Hours": number;
   };

@@ -28,30 +28,44 @@ export class AirtableDiffCalculator {
 
     const touchedAirtableIds = new Set<string>();
 
-    // 1. Build Normalized Airtable Map
-    const airtableMap = new Map<string, AirtableRecord>(
-      destinationRecords.map((rec) => [
-        rec.fields.Name?.trim().toLowerCase() || "",
-        rec,
-      ]),
-    );
+    // 1. Build ID-Based Map
+    const airtableMap = new Map<string, AirtableRecord>();
+    for (const rec of destinationRecords) {
+      const users = rec.fields["User"] as string[] | undefined;
+      const projects = rec.fields["Project"] as string[] | undefined;
+      const month = rec.fields["Month"] as string | undefined;
+
+      const userId = users?.[0] || "no_user";
+      const projectId = projects?.[0] || "no_project";
+      const key = `${userId}_${projectId}_${month || ""}`;
+
+      airtableMap.set(key, rec);
+    }
 
     // 2. Forward Pass: Supabase -> Airtable
     for (const row of sourceRows) {
-      const lookupKey = `${row.user_name} - ${row.project_name} - ${row.month}`
-        .trim()
-        .toLowerCase();
+      const dbUserId = row.airtable_user_id || "no_user";
+      const dbProjectId = row.airtable_project_id || "no_project";
+      const lookupKey = `${dbUserId}_${dbProjectId}_${row.month}`;
 
       const match = airtableMap.get(lookupKey);
-      const supabaseHours = parseFloat(row.total_hours) || 0;
+      const supabaseHours = Number.parseFloat(row.total_hours) || 0;
 
-      // Handle Missing Records (Inserts)
       if (!match) {
         if (allowInserts) {
+          // Safety: Don't push a record if the user somehow missing an ID
+          if (!row.airtable_user_id) {
+            console.warn(
+              `Cannot sync row for ${row.user_name} - Missing Airtable ID`,
+            );
+            stats.missing++;
+            continue;
+          }
+
           inserts.push({
             fields: {
-              User: row.user_name,
-              Project: row.project_name,
+              User: [row.airtable_user_id],
+              Project: row.airtable_project_id ? [row.airtable_project_id] : [],
               Month: row.month,
               "Actual Hours": supabaseHours,
             },
@@ -61,7 +75,7 @@ export class AirtableDiffCalculator {
             `NEW RECORD: Queued ${lookupKey} for creation (${supabaseHours} hrs)`,
           );
         } else {
-          stats.missing++; // Skip if inserts aren't allowed on this table
+          stats.missing++;
         }
         continue;
       }
@@ -70,23 +84,14 @@ export class AirtableDiffCalculator {
       touchedAirtableIds.add(match.id);
 
       const rawAirtableHours = match.fields["Actual Hours"];
-      const airtableHours =
-        typeof rawAirtableHours === "number" ? rawAirtableHours : 0;
+      const airtableHours = typeof rawAirtableHours === "number"
+        ? rawAirtableHours
+        : 0;
 
-      // Evaluate Update Triggers
-      const hasNumericalDifference =
-        Math.abs(supabaseHours - airtableHours) > 0.01;
-      const isBlankButShouldBeZero =
-        supabaseHours === 0 && rawAirtableHours === undefined;
-
-      if (hasNumericalDifference || isBlankButShouldBeZero) {
-        const prevValueLog =
-          rawAirtableHours === undefined ? "Blank/Undefined" : airtableHours;
-
-        console.log(
-          `MATCH FOUND: Updating ${lookupKey} (${prevValueLog} -> ${supabaseHours})`,
-        );
-
+      if (
+        Math.abs(supabaseHours - airtableHours) > 0.01 ||
+        (supabaseHours === 0 && rawAirtableHours === undefined)
+      ) {
         updates.push({
           id: match.id,
           fields: { "Actual Hours": supabaseHours },
@@ -97,22 +102,13 @@ export class AirtableDiffCalculator {
       }
     }
 
-    // 3. Reverse Pass: Airtable -> Supabase (Detecting Zeros/Deletions)
+    // 3. Reverse Pass (Zero out deletions)
     for (const record of destinationRecords) {
       // If a record exists in Airtable but wasn't in our Supabase view, it needs to be zeroed.
       if (!touchedAirtableIds.has(record.id)) {
         const rawValue = record.fields["Actual Hours"];
-
-        // Zero out if it isn't strictly 0 already
-        if (rawValue !== 0) {
-          console.log(
-            `ZEROING OUT: ${record.fields["Name"]} (Was: ${rawValue})`,
-          );
-
-          updates.push({
-            id: record.id,
-            fields: { "Actual Hours": 0 },
-          });
+        if (rawValue !== 0 && rawValue !== undefined) {
+          updates.push({ id: record.id, fields: { "Actual Hours": 0 } });
           stats.updated++;
         }
       }

@@ -2,6 +2,7 @@ import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SlackService } from "../../_shared/services/slack.service.ts";
 import { AirtableService } from "./airtable.service.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
+import { ReferenceSyncService } from "./reference-sync.service.ts";
 import { AggregateRow, SyncJob, SyncStats } from "../types/types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
 
@@ -9,6 +10,8 @@ export class SyncOrchestratorService {
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly slack: SlackService,
+    private readonly airtable: AirtableService,
+    private readonly referenceSync: ReferenceSyncService,
   ) {}
 
   async runAllJobs(): Promise<{ stats: SyncStats; details: string[] }> {
@@ -20,33 +23,28 @@ export class SyncOrchestratorService {
     };
     const logMessages: string[] = [];
 
-    // 1. Define the Sync Jobs configuration
+    // Ensure all IDs exist BEFORE syncing hours
+    await this.referenceSync.syncAllReferences();
+
+    // Payroll Jobs
     const jobs: SyncJob[] = [
       {
         name: "People Assignments Table",
         sourceView: "monthly_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.tableId,
-        allowInserts: false, // Strict: Updates only
+        allowInserts: false,
       },
       {
         name: "Payroll Actuals Table",
         sourceView: "payroll_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.payrollTableId,
-        allowInserts: true, // Automation: Create missing records
+        allowInserts: true,
       },
     ];
 
-    // 2. Process Each Job
+    // B. Process Each Job
     for (const job of jobs) {
       console.log(`[Orchestrator] Starting Job: ${job.name}`);
-
-      if (!job.destinationTableId) {
-        console.warn(
-          `[Orchestrator] Skipping ${job.name}: No destination table ID configured.`,
-        );
-        continue;
-      }
-
       await this.executeJob(job, totalStats, logMessages);
       console.log(`[Orchestrator] Finished Job: ${job.name}`);
     }
@@ -59,23 +57,16 @@ export class SyncOrchestratorService {
     totalStats: SyncStats,
     logMessages: string[],
   ): Promise<void> {
-    const airtable = new AirtableService(
-      AIRTABLE_CONFIG.pat,
-      AIRTABLE_CONFIG.baseId,
-      job.destinationTableId,
-    );
-
-    // A. Fetch Source Data from Supabase
-    const { data: sourceData, error: dbError } = await this.supabase
-      .from(job.sourceView)
-      .select("*");
-
+    const { data: sourceData, error: dbError } = await this.supabase.from(
+      job.sourceView,
+    ).select("*");
     if (dbError) {
       throw new Error(`Supabase Error (${job.sourceView}): ${dbError.message}`);
     }
 
-    // B. Fetch Destination Data from Airtable
-    const destinationRecords = await airtable.fetchRecords();
+    const destinationRecords = await this.airtable.fetchRecords(
+      job.destinationTableId,
+    );
 
     // C. Calculate Differences
     const { updates, inserts, stats } = AirtableDiffCalculator.calculateDiffs(
@@ -86,11 +77,11 @@ export class SyncOrchestratorService {
 
     // D. Execute API Calls
     if (inserts.length > 0) {
-      await airtable.createRecords(inserts);
+      await this.airtable.createRecords(job.destinationTableId, inserts);
     }
 
     if (updates.length > 0) {
-      await airtable.updateRecords(updates);
+      await this.airtable.updateRecords(job.destinationTableId, updates);
     }
 
     // E. Aggregate Stats
