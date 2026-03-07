@@ -47,4 +47,11 @@ export type SyncJob = {
   allowInserts: boolean;
 };
 
+export type DiffContext = {
+  updates: AirtableUpdate[];
+  inserts: AirtableInsert[];
+  stats: SyncStats;
+  touchedAirtableIds: Set<string>;
+};
+
 export type AirtableRecord = z.infer<typeof AirtableRecordSchema>;

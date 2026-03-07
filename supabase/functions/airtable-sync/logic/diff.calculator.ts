@@ -3,6 +3,7 @@ import {
   AirtableInsert,
   AirtableRecord,
   AirtableUpdate,
+  DiffContext,
   SyncStats,
 } from "../types/types.ts";
 
@@ -17,20 +18,35 @@ export class AirtableDiffCalculator {
     inserts: AirtableInsert[];
     stats: SyncStats;
   } {
-    const updates: AirtableUpdate[] = [];
-    const inserts: AirtableInsert[] = [];
-    const stats: SyncStats = {
-      updated: 0,
-      inserted: 0,
-      skipped: 0,
-      missing: 0,
+    const context: DiffContext = {
+      updates: [],
+      inserts: [],
+      stats: { updated: 0, inserted: 0, skipped: 0, missing: 0 },
+      touchedAirtableIds: new Set<string>(),
     };
 
-    const touchedAirtableIds = new Set<string>();
+    // 1. Build the mapping dictionary
+    const airtableMap = this.buildAirtableMap(destinationRecords);
 
-    // 1. Build ID-Based Map
-    const airtableMap = new Map<string, AirtableRecord>();
-    for (const rec of destinationRecords) {
+    // 2. Evaluate all rows coming from Supabase
+    this.processSourceRows(sourceRows, airtableMap, allowInserts, context);
+
+    // 3. Zero out old Airtable rows that no longer exist in Supabase
+    this.processDeletedRecords(destinationRecords, context);
+
+    return {
+      updates: context.updates,
+      inserts: context.inserts,
+      stats: context.stats,
+    };
+  }
+
+  private static buildAirtableMap(
+    records: AirtableRecord[],
+  ): Map<string, AirtableRecord> {
+    const map = new Map<string, AirtableRecord>();
+
+    for (const rec of records) {
       const users = rec.fields["User"] as string[] | undefined;
       const projects = rec.fields["Project"] as string[] | undefined;
       const month = rec.fields["Month"] as string | undefined;
@@ -39,10 +55,18 @@ export class AirtableDiffCalculator {
       const projectId = projects?.[0] || "no_project";
       const key = `${userId}_${projectId}_${month || ""}`;
 
-      airtableMap.set(key, rec);
+      map.set(key, rec);
     }
 
-    // 2. Forward Pass: Supabase -> Airtable
+    return map;
+  }
+
+  private static processSourceRows(
+    sourceRows: AggregateRow[],
+    airtableMap: Map<string, AirtableRecord>,
+    allowInserts: boolean,
+    context: DiffContext,
+  ): void {
     for (const row of sourceRows) {
       const dbUserId = row.airtable_user_id || "no_user";
       const dbProjectId = row.airtable_project_id || "no_project";
@@ -51,69 +75,86 @@ export class AirtableDiffCalculator {
       const match = airtableMap.get(lookupKey);
       const supabaseHours = Number.parseFloat(row.total_hours) || 0;
 
-      if (!match) {
-        if (allowInserts) {
-          // Safety: Don't push a record if the user somehow missing an ID
-          if (!row.airtable_user_id) {
-            console.warn(
-              `Cannot sync row for ${row.user_name} - Missing Airtable ID`,
-            );
-            stats.missing++;
-            continue;
-          }
+      if (match) {
+        this.handleExistingRecord(match, supabaseHours, context);
+      } else {
+        this.handleMissingRecord(row, supabaseHours, allowInserts, context);
+      }
+    }
+  }
 
-          inserts.push({
-            fields: {
-              User: [row.airtable_user_id],
-              Project: row.airtable_project_id ? [row.airtable_project_id] : [],
-              Month: row.month,
-              "Actual Hours": supabaseHours,
-            },
-          });
-          stats.inserted++;
-          console.log(
-            `NEW RECORD: Queued ${lookupKey} for creation (${supabaseHours} hrs)`,
-          );
-        } else {
-          stats.missing++;
-        }
+  private static handleMissingRecord(
+    row: AggregateRow,
+    supabaseHours: number,
+    allowInserts: boolean,
+    context: DiffContext,
+  ): void {
+    if (!allowInserts) {
+      context.stats.missing++;
+      return;
+    }
+
+    if (!row.airtable_user_id) {
+      console.warn(
+        `Cannot sync row for ${row.user_name} - Missing Airtable ID`,
+      );
+      context.stats.missing++;
+      return;
+    }
+
+    context.inserts.push({
+      fields: {
+        User: [row.airtable_user_id],
+        Project: row.airtable_project_id ? [row.airtable_project_id] : [],
+        Month: row.month,
+        "Actual Hours": supabaseHours,
+      },
+    });
+
+    context.stats.inserted++;
+  }
+
+  private static handleExistingRecord(
+    match: AirtableRecord,
+    supabaseHours: number,
+    context: DiffContext,
+  ): void {
+    context.touchedAirtableIds.add(match.id);
+
+    const rawAirtableHours = match.fields["Actual Hours"];
+    const airtableHours = typeof rawAirtableHours === "number"
+      ? rawAirtableHours
+      : 0;
+
+    const hasChanged = Math.abs(supabaseHours - airtableHours) > 0.01;
+    const isBlankButShouldBeZero = supabaseHours === 0 &&
+      rawAirtableHours === undefined;
+
+    if (hasChanged || isBlankButShouldBeZero) {
+      context.updates.push({
+        id: match.id,
+        fields: { "Actual Hours": supabaseHours },
+      });
+      context.stats.updated++;
+    } else {
+      context.stats.skipped++;
+    }
+  }
+
+  private static processDeletedRecords(
+    destinationRecords: AirtableRecord[],
+    context: DiffContext,
+  ): void {
+    for (const record of destinationRecords) {
+      if (context.touchedAirtableIds.has(record.id)) {
         continue;
       }
 
-      // Handle Existing Records (Updates)
-      touchedAirtableIds.add(match.id);
-
-      const rawAirtableHours = match.fields["Actual Hours"];
-      const airtableHours = typeof rawAirtableHours === "number"
-        ? rawAirtableHours
-        : 0;
-
-      if (
-        Math.abs(supabaseHours - airtableHours) > 0.01 ||
-        (supabaseHours === 0 && rawAirtableHours === undefined)
-      ) {
-        updates.push({
-          id: match.id,
-          fields: { "Actual Hours": supabaseHours },
-        });
-        stats.updated++;
-      } else {
-        stats.skipped++;
+      const rawValue = record.fields["Actual Hours"];
+      if (rawValue !== 0 && rawValue !== undefined) {
+        context.updates.push({ id: record.id, fields: { "Actual Hours": 0 } });
+        context.stats.updated++;
       }
     }
-
-    // 3. Reverse Pass (Zero out deletions)
-    for (const record of destinationRecords) {
-      // If a record exists in Airtable but wasn't in our Supabase view, it needs to be zeroed.
-      if (!touchedAirtableIds.has(record.id)) {
-        const rawValue = record.fields["Actual Hours"];
-        if (rawValue !== 0 && rawValue !== undefined) {
-          updates.push({ id: record.id, fields: { "Actual Hours": 0 } });
-          stats.updated++;
-        }
-      }
-    }
-
-    return { updates, inserts, stats };
   }
 }
