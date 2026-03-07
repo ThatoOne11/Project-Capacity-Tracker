@@ -55,14 +55,14 @@ export class AirtableDiffCalculator {
         const key = `${userId}_${projectId}_${month || ""}`;
         map.set(key, rec);
       } else {
-        // Pure ID mapping for People Assignments
         const persons = rec.fields["Person"] as string[] | undefined;
         const projAssignments = rec.fields["Project Assignment"] as
           | string[]
           | undefined;
 
         const personId = persons?.[0] || "no_person";
-        const projAssigId = projAssignments?.[0] || "no_proj_assig";
+        // Give every orphan a highly unique ID so it can never be accidentally adopted!
+        const projAssigId = projAssignments?.[0] || `orphan_${rec.id}`;
 
         const key = `${personId}_${projAssigId}`;
         map.set(key, rec);
@@ -78,6 +78,12 @@ export class AirtableDiffCalculator {
     context: DiffContext,
   ): void {
     for (const row of sourceRows) {
+      // Ignore any time entries that have no Project ID for People Assignments
+      if (context.job.strategy === "ASSIGNMENT" && !row.airtable_project_id) {
+        context.stats.skipped++;
+        continue;
+      }
+
       let lookupKey = "";
 
       if (context.job.strategy === "PAYROLL") {
@@ -85,18 +91,21 @@ export class AirtableDiffCalculator {
         const dbProjectId = row.airtable_project_id || "no_project";
         lookupKey = `${dbUserId}_${dbProjectId}_${row.month}`;
       } else {
-        // Rebuild the IDs to find the exact match
         const [mName, year] = row.month.split(" ");
         const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
         const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
 
         const projAssigExpectedKey = `${row.airtable_project_id}_${isoDate}`;
-        const projAssigId =
-          context.projectAssignmentMap.get(projAssigExpectedKey) ||
-          "no_proj_assig";
+        const projAssigId = context.projectAssignmentMap.get(
+          projAssigExpectedKey,
+        );
         const personId = row.airtable_user_id || "no_person";
 
-        lookupKey = `${personId}_${projAssigId}`;
+        if (projAssigId) {
+          lookupKey = `${personId}_${projAssigId}`;
+        } else {
+          lookupKey = `unmatchable_${personId}_${isoDate}`;
+        }
       }
 
       const match = airtableMap.get(lookupKey);

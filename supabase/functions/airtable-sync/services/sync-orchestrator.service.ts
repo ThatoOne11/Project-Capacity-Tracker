@@ -3,7 +3,12 @@ import { SlackService } from "../../_shared/services/slack.service.ts";
 import { AirtableService } from "./airtable.service.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
 import { ReferenceSyncService } from "./reference-sync.service.ts";
-import { AggregateRow, SyncJob, SyncStats } from "../types/types.ts";
+import {
+  AggregateRow,
+  AirtableUpdate,
+  SyncJob,
+  SyncStats,
+} from "../types/types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
 
 export class SyncOrchestratorService {
@@ -86,11 +91,23 @@ export class SyncOrchestratorService {
       projectAssignmentMap,
     );
 
+    // ✅ NEW: Deduplicate updates to prevent Airtable API crashes
+    // If the diff calculator generated multiple updates for the same Airtable ID,
+    // this keeps only the last one.
+    const uniqueUpdatesMap = new Map<string, AirtableUpdate>();
+    for (const update of updates) {
+      uniqueUpdatesMap.set(update.id, update);
+    }
+    const cleanUpdates = Array.from(uniqueUpdatesMap.values());
+
+    // Execute API Calls
     if (inserts.length > 0) {
       await this.airtable.createRecords(job.destinationTableId, inserts);
     }
-    if (updates.length > 0) {
-      await this.airtable.updateRecords(job.destinationTableId, updates);
+
+    // ✅ Pass the clean, deduplicated updates array
+    if (cleanUpdates.length > 0) {
+      await this.airtable.updateRecords(job.destinationTableId, cleanUpdates);
     }
 
     totalStats.updated += stats.updated;
