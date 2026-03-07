@@ -2,42 +2,53 @@ import { assertEquals } from "jsr:@std/assert";
 import { AirtableDiffCalculator } from "./diff.calculator.ts";
 import { AggregateRow, AirtableRecord } from "../types/types.ts";
 
-Deno.test("AirtableDiffCalculator - Test Suite", async (t) => {
-  await t.step("1. It should generate an UPDATE when hours differ", () => {
-    const sourceRows: AggregateRow[] = [
-      {
-        user_name: "Ross Nelson",
-        project_name: "BlueWorx",
-        month: "January 2026",
-        total_hours: "10.50",
-      },
-    ];
-    const destinationRecords: AirtableRecord[] = [
-      {
-        id: "rec_1",
-        fields: {
-          "Name": "ross nelson - blueworx - january 2026",
-          "Actual Hours": 8.00,
+Deno.test("AirtableDiffCalculator - V2 ID-Based Test Suite", async (t) => {
+  await t.step(
+    "1. It should generate an UPDATE when hours differ based on Record IDs",
+    () => {
+      const sourceRows: AggregateRow[] = [
+        {
+          airtable_user_id: "rec_user1",
+          user_name: "Ross Nelson",
+          airtable_project_id: "rec_proj1",
+          project_name: "BlueWorx",
+          month: "January 2026",
+          total_hours: "10.50",
         },
-      },
-    ];
+      ];
 
-    const result = AirtableDiffCalculator.calculateDiffs(
-      sourceRows,
-      destinationRecords,
-      false,
-    );
+      // Airtable returns Linked Records as Arrays of strings
+      const destinationRecords: AirtableRecord[] = [
+        {
+          id: "rec_airtable_row_1",
+          fields: {
+            "User": ["rec_user1"],
+            "Project": ["rec_proj1"],
+            "Month": "January 2026",
+            "Actual Hours": 8.00,
+          },
+        },
+      ];
 
-    assertEquals(result.updates.length, 1);
-    assertEquals(result.updates[0].id, "rec_1");
-    assertEquals(result.updates[0].fields["Actual Hours"], 10.50);
-    assertEquals(result.stats.updated, 1);
-  });
+      const result = AirtableDiffCalculator.calculateDiffs(
+        sourceRows,
+        destinationRecords,
+        false,
+      );
+
+      assertEquals(result.updates.length, 1);
+      assertEquals(result.updates[0].id, "rec_airtable_row_1");
+      assertEquals(result.updates[0].fields["Actual Hours"], 10.50);
+      assertEquals(result.stats.updated, 1);
+    },
+  );
 
   await t.step("2. It should SKIP when hours are identical", () => {
     const sourceRows: AggregateRow[] = [
       {
+        airtable_user_id: "rec_user2",
         user_name: "Tinashe",
+        airtable_project_id: "rec_proj2",
         project_name: "MotionAds",
         month: "February 2026",
         total_hours: "40.00",
@@ -45,9 +56,11 @@ Deno.test("AirtableDiffCalculator - Test Suite", async (t) => {
     ];
     const destinationRecords: AirtableRecord[] = [
       {
-        id: "rec_2",
+        id: "rec_airtable_row_2",
         fields: {
-          "Name": "tinashe - motionads - february 2026",
+          "User": ["rec_user2"],
+          "Project": ["rec_proj2"],
+          "Month": "February 2026",
           "Actual Hours": 40.00,
         },
       },
@@ -64,11 +77,13 @@ Deno.test("AirtableDiffCalculator - Test Suite", async (t) => {
   });
 
   await t.step(
-    "3. It should generate an INSERT when allowInserts is true",
+    "3. It should generate an INSERT with ID Arrays when allowInserts is true",
     () => {
       const sourceRows: AggregateRow[] = [
         {
+          airtable_user_id: "rec_user3",
           user_name: "Msizi",
+          airtable_project_id: "rec_proj3",
           project_name: "Internal",
           month: "February 2026",
           total_hours: "5.25",
@@ -84,18 +99,22 @@ Deno.test("AirtableDiffCalculator - Test Suite", async (t) => {
       );
 
       assertEquals(result.inserts.length, 1);
-      assertEquals(result.inserts[0].fields.User, "Msizi");
+      // STRICT CHECK: Must be an Array of IDs now, not a string!
+      assertEquals(result.inserts[0].fields.User, ["rec_user3"]);
+      assertEquals(result.inserts[0].fields.Project, ["rec_proj3"]);
       assertEquals(result.inserts[0].fields["Actual Hours"], 5.25);
       assertEquals(result.stats.inserted, 1);
     },
   );
 
   await t.step(
-    "4. It should SKIP inserts and flag missing when allowInserts is false",
+    "4. SAFETY CHECK: It should block inserts if the Supabase row is missing an Airtable ID",
     () => {
       const sourceRows: AggregateRow[] = [
         {
-          user_name: "Msizi",
+          airtable_user_id: null, // Uh oh, Phase 1 Reference Sync failed to get an ID!
+          user_name: "New Guy",
+          airtable_project_id: "rec_proj4",
           project_name: "Internal",
           month: "February 2026",
           total_hours: "5.25",
@@ -106,9 +125,10 @@ Deno.test("AirtableDiffCalculator - Test Suite", async (t) => {
       const result = AirtableDiffCalculator.calculateDiffs(
         sourceRows,
         destinationRecords,
-        false,
+        true,
       );
 
+      // It should refuse to insert and flag it as missing to prevent a malformed API call
       assertEquals(result.inserts.length, 0);
       assertEquals(result.stats.missing, 1);
     },
@@ -123,19 +143,14 @@ Deno.test("AirtableDiffCalculator - Test Suite", async (t) => {
       // Airtable has an old record with 15 hours
       const destinationRecords: AirtableRecord[] = [
         {
-          id: "rec_old",
+          id: "rec_old_row",
           fields: {
-            "Name": "Ross Nelson - DeletedProject - January 2026",
+            "User": ["rec_deleted_user"],
+            "Project": ["rec_deleted_project"],
+            "Month": "January 2026",
             "Actual Hours": 15.00,
           },
         },
-        {
-          id: "rec_zero",
-          fields: {
-            "Name": "Tinashe - OldProject - January 2026",
-            "Actual Hours": 0,
-          },
-        }, // Should be ignored since it's already 0
       ];
 
       const result = AirtableDiffCalculator.calculateDiffs(
@@ -145,7 +160,7 @@ Deno.test("AirtableDiffCalculator - Test Suite", async (t) => {
       );
 
       assertEquals(result.updates.length, 1);
-      assertEquals(result.updates[0].id, "rec_old");
+      assertEquals(result.updates[0].id, "rec_old_row");
       assertEquals(result.updates[0].fields["Actual Hours"], 0); // Must be zeroed out
       assertEquals(result.stats.updated, 1);
     },

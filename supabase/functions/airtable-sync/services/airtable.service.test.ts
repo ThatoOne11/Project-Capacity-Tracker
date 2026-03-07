@@ -3,36 +3,34 @@ import { AirtableService } from "./airtable.service.ts";
 
 Deno.test("AirtableService - Rate Limit Batching Suite", async (t) => {
   // Initialize service with dummy credentials
-  const service = new AirtableService("dummy_pat", "dummy_base", "dummy_table");
+  const service = new AirtableService("dummy_pat", "dummy_base");
+  const dummyTable = "dummy_table";
 
   await t.step(
     "It should split 25 updates into exactly 3 fetch calls (10, 10, 5)",
     async () => {
       let fetchCallCount = 0;
-
-      // 1. Save the real fetch function
       const originalFetch = globalThis.fetch;
 
-      // 2. Intercept (Mock) the fetch function
+      // Intercept (Mock) the fetch function
       globalThis.fetch = () => {
         fetchCallCount++;
-        // Return a fake "200 OK" response so the code keeps running
         return Promise.resolve(
           new Response(JSON.stringify({ records: [] }), { status: 200 }),
         );
       };
 
       try {
-        // 3. Generate 25 dummy updates
+        // Generate 25 dummy updates
         const updates = Array.from({ length: 25 }).map((_, i) => ({
           id: `rec_${i}`,
           fields: { "Actual Hours": Math.random() * 10 },
         }));
 
-        // 4. Run the method
-        await service.updateRecords(updates);
+        // Run the method with the new dynamic table ID parameter
+        await service.updateRecords(dummyTable, updates);
 
-        // 5. Assert it made exactly 3 API calls
+        // Assert it made exactly 3 API calls
         assertEquals(fetchCallCount, 3);
       } finally {
         // 6. ALWAYS restore the original fetch function, even if the test fails
@@ -55,7 +53,8 @@ Deno.test("AirtableService - Rate Limit Batching Suite", async (t) => {
       };
 
       try {
-        await service.updateRecords([]);
+        // Run with empty array
+        await service.updateRecords(dummyTable, []);
         assertEquals(fetchCallCount, 0);
       } finally {
         globalThis.fetch = originalFetch;
