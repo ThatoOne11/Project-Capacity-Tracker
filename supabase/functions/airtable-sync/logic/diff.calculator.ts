@@ -4,15 +4,15 @@ import {
   AirtableRecord,
   AirtableUpdate,
   DiffContext,
+  SyncJob,
   SyncStats,
 } from "../types/types.ts";
 
 export class AirtableDiffCalculator {
-  //Compares Supabase rows vs Airtable records and returns exact changes needed.
   static calculateDiffs(
     sourceRows: AggregateRow[],
     destinationRecords: AirtableRecord[],
-    allowInserts: boolean,
+    job: SyncJob,
   ): {
     updates: AirtableUpdate[];
     inserts: AirtableInsert[];
@@ -23,15 +23,11 @@ export class AirtableDiffCalculator {
       inserts: [],
       stats: { updated: 0, inserted: 0, skipped: 0, missing: 0 },
       touchedAirtableIds: new Set<string>(),
+      job,
     };
 
-    // 1. Build the mapping dictionary
-    const airtableMap = this.buildAirtableMap(destinationRecords);
-
-    // 2. Evaluate all rows coming from Supabase
-    this.processSourceRows(sourceRows, airtableMap, allowInserts, context);
-
-    // 3. Zero out old Airtable rows that no longer exist in Supabase
+    const airtableMap = this.buildAirtableMap(destinationRecords, job.strategy);
+    this.processSourceRows(sourceRows, airtableMap, context);
     this.processDeletedRecords(destinationRecords, context);
 
     return {
@@ -43,19 +39,24 @@ export class AirtableDiffCalculator {
 
   private static buildAirtableMap(
     records: AirtableRecord[],
+    strategy: "PAYROLL" | "ASSIGNMENT",
   ): Map<string, AirtableRecord> {
     const map = new Map<string, AirtableRecord>();
 
     for (const rec of records) {
-      const users = rec.fields["User"] as string[] | undefined;
-      const projects = rec.fields["Project"] as string[] | undefined;
-      const month = rec.fields["Month"] as string | undefined;
+      if (strategy === "PAYROLL") {
+        const users = rec.fields["User"] as string[] | undefined;
+        const projects = rec.fields["Project"] as string[] | undefined;
+        const month = rec.fields["Month"] as string | undefined;
 
-      const userId = users?.[0] || "no_user";
-      const projectId = projects?.[0] || "no_project";
-      const key = `${userId}_${projectId}_${month || ""}`;
-
-      map.set(key, rec);
+        const userId = users?.[0] || "no_user";
+        const projectId = projects?.[0] || "no_project";
+        const key = `${userId}_${projectId}_${month || ""}`;
+        map.set(key, rec);
+      } else {
+        const name = (rec.fields["Name"] as string) || "";
+        map.set(name.trim().toLowerCase(), rec);
+      }
     }
 
     return map;
@@ -64,13 +65,20 @@ export class AirtableDiffCalculator {
   private static processSourceRows(
     sourceRows: AggregateRow[],
     airtableMap: Map<string, AirtableRecord>,
-    allowInserts: boolean,
     context: DiffContext,
   ): void {
     for (const row of sourceRows) {
-      const dbUserId = row.airtable_user_id || "no_user";
-      const dbProjectId = row.airtable_project_id || "no_project";
-      const lookupKey = `${dbUserId}_${dbProjectId}_${row.month}`;
+      let lookupKey = "";
+
+      if (context.job.strategy === "PAYROLL") {
+        const dbUserId = row.airtable_user_id || "no_user";
+        const dbProjectId = row.airtable_project_id || "no_project";
+        lookupKey = `${dbUserId}_${dbProjectId}_${row.month}`;
+      } else {
+        lookupKey = `${row.user_name} - ${row.project_name} - ${row.month}`
+          .trim()
+          .toLowerCase();
+      }
 
       const match = airtableMap.get(lookupKey);
       const supabaseHours = Number.parseFloat(row.total_hours) || 0;
@@ -78,7 +86,7 @@ export class AirtableDiffCalculator {
       if (match) {
         this.handleExistingRecord(match, supabaseHours, context);
       } else {
-        this.handleMissingRecord(row, supabaseHours, allowInserts, context);
+        this.handleMissingRecord(row, supabaseHours, context);
       }
     }
   }
@@ -86,10 +94,9 @@ export class AirtableDiffCalculator {
   private static handleMissingRecord(
     row: AggregateRow,
     supabaseHours: number,
-    allowInserts: boolean,
     context: DiffContext,
   ): void {
-    if (!allowInserts) {
+    if (!context.job.allowInserts) {
       context.stats.missing++;
       return;
     }
@@ -102,15 +109,24 @@ export class AirtableDiffCalculator {
       return;
     }
 
-    context.inserts.push({
-      fields: {
+    let fields: Record<string, unknown> = {};
+
+    if (context.job.strategy === "PAYROLL") {
+      fields = {
         User: [row.airtable_user_id],
         Project: row.airtable_project_id ? [row.airtable_project_id] : [],
         Month: row.month,
         "Actual Hours": supabaseHours,
-      },
-    });
+      };
+    } else {
+      fields = {
+        Person: [row.airtable_user_id],
+        "Project Assignment": [`${row.project_name} - ${row.month}`],
+        "Actual Hours": supabaseHours,
+      };
+    }
 
+    context.inserts.push({ fields });
     context.stats.inserted++;
   }
 

@@ -32,7 +32,7 @@ export class SyncOrchestratorService {
         name: "People Assignments Table",
         sourceView: "monthly_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.tableId,
-        allowInserts: false, // KEPT FALSE AS REQUESTED
+        allowInserts: true,
         strategy: "ASSIGNMENT",
       },
       {
@@ -68,13 +68,14 @@ export class SyncOrchestratorService {
 
     const destinationRecords = await this.airtable.fetchRecords(
       job.destinationTableId,
+      job.strategy,
     );
 
     // C. Calculate Differences
     const { updates, inserts, stats } = AirtableDiffCalculator.calculateDiffs(
       sourceData as AggregateRow[],
       destinationRecords,
-      job.allowInserts,
+      job,
     );
 
     // D. Execute API Calls
