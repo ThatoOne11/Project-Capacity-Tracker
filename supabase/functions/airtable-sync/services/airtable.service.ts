@@ -15,16 +15,25 @@ export class AirtableService {
     };
   }
 
-  async fetchRecords(tableId: string): Promise<AirtableRecord[]> {
+  async fetchRecords(
+    tableId: string,
+    strategy: "PAYROLL" | "ASSIGNMENT",
+  ): Promise<AirtableRecord[]> {
     const allRecords: AirtableRecord[] = [];
     let offset: string | undefined = undefined;
 
     do {
       const params = new URLSearchParams();
-      params.append("fields[]", "User");
-      params.append("fields[]", "Project");
-      params.append("fields[]", "Month");
+
+      if (strategy === "PAYROLL") {
+        params.append("fields[]", "User");
+        params.append("fields[]", "Project");
+        params.append("fields[]", "Month");
+      } else {
+        params.append("fields[]", "Name");
+      }
       params.append("fields[]", "Actual Hours");
+
       if (offset) params.append("offset", offset);
 
       const url =
@@ -41,7 +50,7 @@ export class AirtableService {
       if (data.records) allRecords.push(...data.records);
       offset = data.offset;
 
-      if (offset) await new Promise((r) => setTimeout(r, 200)); // Small pause to be nice to the API
+      if (offset) await new Promise((r) => setTimeout(r, 200));
     } while (offset);
 
     console.log(`Total records found: ${allRecords.length}`);
@@ -82,7 +91,7 @@ export class AirtableService {
       const res = await fetch(url, {
         method: "POST",
         headers: this.headers,
-        body: JSON.stringify({ records: chunk }),
+        body: JSON.stringify({ records: chunk, typecast: true }),
       });
       if (!res.ok) throw new Error(`Batch insert failed: ${await res.text()}`);
       await new Promise((resolve) => setTimeout(resolve, 350));

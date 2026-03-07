@@ -45,6 +45,7 @@ export type SyncJob = {
   sourceView: string;
   destinationTableId: string;
   allowInserts: boolean;
+  strategy: "PAYROLL" | "ASSIGNMENT"; // Dictates which columns and logic to use
 };
 
 export type DiffContext = {

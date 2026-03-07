@@ -32,13 +32,15 @@ export class SyncOrchestratorService {
         name: "People Assignments Table",
         sourceView: "monthly_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.tableId,
-        allowInserts: false,
+        allowInserts: false, // KEPT FALSE AS REQUESTED
+        strategy: "ASSIGNMENT",
       },
       {
         name: "Payroll Actuals Table",
         sourceView: "payroll_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.payrollTableId,
         allowInserts: true,
+        strategy: "PAYROLL",
       },
     ];
 
