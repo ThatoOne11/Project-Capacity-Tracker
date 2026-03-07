@@ -7,7 +7,10 @@ import {
   ReferenceRecord,
   ViewRow,
 } from "../types/types.ts";
+import { SyncStrategies } from "../consts/consts.ts";
 
+// Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
+// before attempting to sync numerical time entries.
 export class ReferenceSyncService {
   constructor(
     private readonly supabase: SupabaseClient,
@@ -16,7 +19,7 @@ export class ReferenceSyncService {
 
   async syncAllReferences(): Promise<void> {
     console.log(
-      "[ReferenceSync] Checking for missing IDs among ACTIVE records...",
+      "[ReferenceSync] Verifying foundational records in Airtable...",
     );
 
     const { activeUsers, activeProjects } = await this
@@ -81,8 +84,6 @@ export class ReferenceSyncService {
     if (error || !projects) return;
 
     const missingProjects = projects.filter((p) => !p.airtable_id);
-
-    // Explicitly type the mapped array
     const activeClientIds = Array.from(
       new Set(
         projects.map((p) => p.client_id).filter((id): id is string =>
@@ -122,7 +123,6 @@ export class ReferenceSyncService {
     airtableNameField: string,
     activeNames: string[],
   ): Promise<void> {
-    // 1. Find all records missing an Airtable ID
     const { data: missingRecords, error } = await this.supabase
       .from(supabaseTable)
       .select("id, name")
@@ -148,7 +148,7 @@ export class ReferenceSyncService {
     if (records.length === 0) return;
 
     console.log(
-      `[ReferenceSync] Found ${records.length} active missing records in ${supabaseTable}. Creating...`,
+      `[ReferenceSync] Creating ${records.length} missing records in ${supabaseTable}...`,
     );
 
     for (const record of records) {
@@ -173,27 +173,25 @@ export class ReferenceSyncService {
           `[ReferenceSync] Created & Linked: ${record.name} (${newAirtableId})`,
         );
       } catch (err: unknown) {
-        const error = err as Error;
         console.error(
-          `[ReferenceSync] Failed to create/link ${record.name}:`,
-          error.message,
+          `[ReferenceSync] Failed to link ${record.name}:`,
+          (err as Error).message,
         );
       }
     }
   }
 
+  // Pre-builds any required Project Assignments (e.g., "MotionAds - October 2025")
+  // so they are available for mapping when the main numerical sync runs.
   async getOrBuildProjectAssignments(
     sourceRows: AggregateRow[],
   ): Promise<Map<string, string>> {
-    console.log(
-      "[ReferenceSync] Verifying Project Assignments exist using pure IDs...",
-    );
+    console.log("[ReferenceSync] Verifying Project Assignments mapping...");
     const tableId = AIRTABLE_CONFIG.projectAssignmentsTableId;
 
-    // Fetch using our new ID-only strategy
     const existingRecords = await this.airtable.fetchRecords(
       tableId,
-      "PROJECT_ASSIGNMENT",
+      SyncStrategies.PROJECT_ASSIGNMENT,
     );
     const idMap = this.buildAssignmentMap(existingRecords);
     const missingAssignments = this.identifyMissingAssignments(
@@ -212,10 +210,9 @@ export class ReferenceSyncService {
     const map = new Map<string, string>();
     for (const rec of records) {
       const projects = rec.fields["Project"] as string[] | undefined;
-      const month = rec.fields["Month"] as string | undefined; // e.g., "2026-02-01"
+      const month = rec.fields["Month"] as string | undefined;
 
       if (projects && projects.length > 0 && month) {
-        // Create an unbreakable key: recProjectID_2026-02-01
         map.set(`${projects[0]}_${month}`, rec.id);
       }
     }
@@ -231,10 +228,9 @@ export class ReferenceSyncService {
     for (const row of sourceRows) {
       if (!row.airtable_project_id) continue;
 
-      // Convert "February 2026" to "2026-02-01"
-      const [mName, year] = row.month.split(" ");
-      const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
-      const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
+      const [monthName, year] = row.month.split(" ");
+      const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
+      const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
 
       const key = `${row.airtable_project_id}_${isoDate}`;
 
@@ -254,7 +250,7 @@ export class ReferenceSyncService {
     idMap: Map<string, string>,
   ): Promise<void> {
     console.log(
-      `[ReferenceSync] Creating ${missing.size} missing Project Assignments...`,
+      `[ReferenceSync] Auto-generating ${missing.size} missing Project Assignments...`,
     );
 
     for (const [key, data] of missing.entries()) {
@@ -262,18 +258,15 @@ export class ReferenceSyncService {
         const newId = await this.airtable.createReferenceRecord(tableId, {
           Project: [data.projectId],
           Month: data.isoDate,
-          // Zeroing out the manual numeric fields
           "Commitment Hours": 0,
           "Hours to be Paid": 0,
           "Original Invoice AMount": 0,
         });
         idMap.set(key, newId);
-        console.log(`[ReferenceSync] Created Project Assignment: ${key}`);
       } catch (err: unknown) {
-        const error = err as Error;
         console.error(
           `[ReferenceSync] Failed to create Project Assignment ${key}:`,
-          error.message,
+          (err as Error).message,
         );
       }
     }

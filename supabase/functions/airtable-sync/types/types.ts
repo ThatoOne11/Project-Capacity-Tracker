@@ -10,6 +10,8 @@ export const AirtableResponseSchema = z.object({
   offset: z.string().optional(),
 });
 
+export type AirtableRecord = z.infer<typeof AirtableRecordSchema>;
+
 export type AggregateRow = {
   airtable_user_id: string | null;
   user_name: string;
@@ -28,16 +30,11 @@ export type SyncStats = {
 
 export type AirtableUpdate = {
   id: string;
-  fields: { "Actual Hours": number };
+  fields: Record<string, unknown>;
 };
 
 export type AirtableInsert = {
-  fields: {
-    User: string[];
-    Project: string[];
-    Month: string;
-    "Actual Hours": number;
-  };
+  fields: Record<string, unknown>;
 };
 
 export type SyncJob = {
@@ -45,7 +42,7 @@ export type SyncJob = {
   sourceView: string;
   destinationTableId: string;
   allowInserts: boolean;
-  strategy: "PAYROLL" | "ASSIGNMENT"; // Dictates which columns and logic to use
+  strategy: SyncStrategy;
 };
 
 export type DiffContext = {
@@ -66,5 +63,3 @@ export type ReferenceRecord = {
   id: string;
   name: string;
 };
-
-export type AirtableRecord = z.infer<typeof AirtableRecordSchema>;

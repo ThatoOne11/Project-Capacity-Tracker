@@ -1,3 +1,4 @@
+import { SyncStrategies, SyncStrategy } from "../consts/consts.ts";
 import {
   AirtableInsert,
   AirtableRecord,
@@ -15,9 +16,10 @@ export class AirtableService {
     };
   }
 
+  // Fetches paginated records from an Airtable table based on the required sync strategy.
   async fetchRecords(
     tableId: string,
-    strategy: "PAYROLL" | "ASSIGNMENT" | "PROJECT_ASSIGNMENT",
+    strategy: SyncStrategy,
   ): Promise<AirtableRecord[]> {
     const allRecords: AirtableRecord[] = [];
     let offset: string | undefined = undefined;
@@ -25,18 +27,17 @@ export class AirtableService {
     do {
       const params = new URLSearchParams();
 
-      if (strategy === "PAYROLL") {
+      if (strategy === SyncStrategies.PAYROLL) {
         params.append("fields[]", "User");
         params.append("fields[]", "Project");
         params.append("fields[]", "Month");
         params.append("fields[]", "Actual Hours");
-      } else if (strategy === "ASSIGNMENT") {
+      } else if (strategy === SyncStrategies.ASSIGNMENT) {
         params.append("fields[]", "Person");
         params.append("fields[]", "Project Assignment");
         params.append("fields[]", "Actual Hours");
         params.append("fields[]", "Assigned Hours");
-      } else if (strategy === "PROJECT_ASSIGNMENT") {
-        // Pull pure IDs and Dates to avoid naming mismatches!
+      } else if (strategy === SyncStrategies.PROJECT_ASSIGNMENT) {
         params.append("fields[]", "Project");
         params.append("fields[]", "Month");
       }
@@ -48,7 +49,7 @@ export class AirtableService {
       const res = await fetch(url, { headers: this.headers });
 
       if (!res.ok) {
-        throw new Error(`Airtable Fetch Failed: ${await res.text()}`);
+        throw new Error(`[AirtableService] Fetch Failed: ${await res.text()}`);
       }
 
       const rawData = await res.json();
@@ -57,22 +58,28 @@ export class AirtableService {
       if (data.records) allRecords.push(...data.records);
       offset = data.offset;
 
-      if (offset) await new Promise((r) => setTimeout(r, 200));
+      // Rate limit protection
+      if (offset) await new Promise((resolve) => setTimeout(resolve, 200));
     } while (offset);
 
-    console.log(`Total records found: ${allRecords.length}`);
+    console.log(
+      `[AirtableService] Retrieved ${allRecords.length} records for strategy: ${strategy}`,
+    );
     return allRecords;
   }
 
+  //Updates records in batches of 10 to comply with Airtable's API limits.
   async updateRecords(
     tableId: string,
     updates: { id: string; fields: Record<string, unknown> }[],
   ): Promise<void> {
     if (updates.length === 0) return;
-    const url = `${this.baseUrl}/${this.baseId}/${tableId}`;
-    console.log(`Pushing ${updates.length} updates to Airtable...`);
 
-    // Airtable limit: 10 records per request
+    const url = `${this.baseUrl}/${this.baseId}/${tableId}`;
+    console.log(
+      `[AirtableService] Pushing ${updates.length} updates in batches...`,
+    );
+
     for (let i = 0; i < updates.length; i += 10) {
       const chunk = updates.slice(i, i + 10);
       const res = await fetch(url, {
@@ -80,18 +87,27 @@ export class AirtableService {
         headers: this.headers,
         body: JSON.stringify({ records: chunk }),
       });
-      if (!res.ok) throw new Error(`Batch failed: ${await res.text()}`);
-      await new Promise((resolve) => setTimeout(resolve, 350)); // Sleep 350ms between batches to avoid 429 Rate Limits
+
+      if (!res.ok) {
+        throw new Error(
+          `[AirtableService] Batch update failed: ${await res.text()}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 350));
     }
   }
 
+  // Creates new records in batches of 10. Uses typecast to auto-link reference fields.
   async createRecords(
     tableId: string,
     inserts: AirtableInsert[],
   ): Promise<void> {
     if (inserts.length === 0) return;
+
     const url = `${this.baseUrl}/${this.baseId}/${tableId}`;
-    console.log(`Pushing ${inserts.length} new records to Airtable...`);
+    console.log(
+      `[AirtableService] Pushing ${inserts.length} new records in batches...`,
+    );
 
     for (let i = 0; i < inserts.length; i += 10) {
       const chunk = inserts.slice(i, i + 10);
@@ -100,12 +116,17 @@ export class AirtableService {
         headers: this.headers,
         body: JSON.stringify({ records: chunk, typecast: true }),
       });
-      if (!res.ok) throw new Error(`Batch insert failed: ${await res.text()}`);
+
+      if (!res.ok) {
+        throw new Error(
+          `[AirtableService] Batch insert failed: ${await res.text()}`,
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, 350));
     }
   }
 
-  // Helper for ReferenceSyncService to auto-create Users/Clients/Projects
+  // Creates a single reference record (e.g. User, Client, Project) and returns its new Airtable ID.
   async createReferenceRecord(
     tableId: string,
     fields: Record<string, unknown>,
@@ -118,8 +139,11 @@ export class AirtableService {
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to create reference: ${await res.text()}`);
+      throw new Error(
+        `[AirtableService] Failed to create reference: ${await res.text()}`,
+      );
     }
+
     const data = await res.json();
     return data.records[0].id;
   }

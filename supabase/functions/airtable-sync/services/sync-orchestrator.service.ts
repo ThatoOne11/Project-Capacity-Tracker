@@ -10,6 +10,7 @@ import {
   SyncStats,
 } from "../types/types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
+import { SyncStrategies } from "../consts/consts.ts";
 
 export class SyncOrchestratorService {
   constructor(
@@ -28,32 +29,30 @@ export class SyncOrchestratorService {
     };
     const logMessages: string[] = [];
 
-    // Ensure all IDs exist BEFORE syncing hours
+    // Foundation logic: Establish all IDs prior to numerical sync
     await this.referenceSync.syncAllReferences();
 
-    // Payroll Jobs
     const jobs: SyncJob[] = [
       {
         name: "People Assignments Table",
         sourceView: "monthly_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.tableId,
         allowInserts: true,
-        strategy: "ASSIGNMENT",
+        strategy: SyncStrategies.ASSIGNMENT,
       },
       {
         name: "Payroll Actuals Table",
         sourceView: "payroll_aggregates_view",
         destinationTableId: AIRTABLE_CONFIG.payrollTableId,
         allowInserts: true,
-        strategy: "PAYROLL",
+        strategy: SyncStrategies.PAYROLL,
       },
     ];
 
-    // B. Process Each Job
     for (const job of jobs) {
-      console.log(`[Orchestrator] Starting Job: ${job.name}`);
+      console.log(`\n[SyncOrchestrator] Starting Job: ${job.name}`);
       await this.executeJob(job, totalStats, logMessages);
-      console.log(`[Orchestrator] Finished Job: ${job.name}`);
+      console.log(`[SyncOrchestrator] Finished Job: ${job.name}`);
     }
 
     return { stats: totalStats, details: logMessages };
@@ -67,12 +66,16 @@ export class SyncOrchestratorService {
     const { data: sourceData, error: dbError } = await this.supabase.from(
       job.sourceView,
     ).select("*");
+
     if (dbError) {
-      throw new Error(`Supabase Error (${job.sourceView}): ${dbError.message}`);
+      throw new Error(
+        `[SyncOrchestrator] Supabase Error (${job.sourceView}): ${dbError.message}`,
+      );
     }
 
     let projectAssignmentMap = new Map<string, string>();
-    if (job.strategy === "ASSIGNMENT" && job.allowInserts) {
+
+    if (job.strategy === SyncStrategies.ASSIGNMENT && job.allowInserts) {
       projectAssignmentMap = await this.referenceSync
         .getOrBuildProjectAssignments(
           sourceData as AggregateRow[],
@@ -91,21 +94,18 @@ export class SyncOrchestratorService {
       projectAssignmentMap,
     );
 
-    // ✅ NEW: Deduplicate updates to prevent Airtable API crashes
-    // If the diff calculator generated multiple updates for the same Airtable ID,
-    // this keeps only the last one.
+    // Deduplicate updates to prevent Airtable API batch rejection.
+    // Airtable crashes if a batch contains multiple operations targeting the exact same record ID.
     const uniqueUpdatesMap = new Map<string, AirtableUpdate>();
     for (const update of updates) {
       uniqueUpdatesMap.set(update.id, update);
     }
     const cleanUpdates = Array.from(uniqueUpdatesMap.values());
 
-    // Execute API Calls
     if (inserts.length > 0) {
       await this.airtable.createRecords(job.destinationTableId, inserts);
     }
 
-    // ✅ Pass the clean, deduplicated updates array
     if (cleanUpdates.length > 0) {
       await this.airtable.updateRecords(job.destinationTableId, cleanUpdates);
     }

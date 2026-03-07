@@ -1,3 +1,4 @@
+import { SyncStrategies } from "../consts/consts.ts";
 import {
   AggregateRow,
   AirtableInsert,
@@ -7,6 +8,9 @@ import {
   SyncJob,
   SyncStats,
 } from "../types/types.ts";
+
+//Calculates the exact insertions and updates required to sync Supabase aggregates
+// with existing Airtable records, ensuring zero ghost rows and preventing data loss.
 export class AirtableDiffCalculator {
   static calculateDiffs(
     sourceRows: AggregateRow[],
@@ -40,12 +44,12 @@ export class AirtableDiffCalculator {
 
   private static buildAirtableMap(
     records: AirtableRecord[],
-    strategy: "PAYROLL" | "ASSIGNMENT",
+    strategy: string,
   ): Map<string, AirtableRecord> {
     const map = new Map<string, AirtableRecord>();
 
     for (const rec of records) {
-      if (strategy === "PAYROLL") {
+      if (strategy === SyncStrategies.PAYROLL) {
         const users = rec.fields["User"] as string[] | undefined;
         const projects = rec.fields["Project"] as string[] | undefined;
         const month = rec.fields["Month"] as string | undefined;
@@ -53,6 +57,7 @@ export class AirtableDiffCalculator {
         const userId = users?.[0] || "no_user";
         const projectId = projects?.[0] || "no_project";
         const key = `${userId}_${projectId}_${month || ""}`;
+
         map.set(key, rec);
       } else {
         const persons = rec.fields["Person"] as string[] | undefined;
@@ -61,11 +66,11 @@ export class AirtableDiffCalculator {
           | undefined;
 
         const personId = persons?.[0] || "no_person";
-        // Give every orphan a highly unique ID so it can never be accidentally adopted!
-        const projAssigId = projAssignments?.[0] || `orphan_${rec.id}`;
 
-        const key = `${personId}_${projAssigId}`;
-        map.set(key, rec);
+        // Tags orphaned records with their own ID to isolate them from active updates
+        const projectAssignmentId = projAssignments?.[0] || `orphan_${rec.id}`;
+
+        map.set(`${personId}_${projectAssignmentId}`, rec);
       }
     }
 
@@ -78,34 +83,36 @@ export class AirtableDiffCalculator {
     context: DiffContext,
   ): void {
     for (const row of sourceRows) {
-      // Ignore any time entries that have no Project ID for People Assignments
-      if (context.job.strategy === "ASSIGNMENT" && !row.airtable_project_id) {
+      // Unassigned time must be skipped for People Assignments, but permitted for Payroll
+      if (
+        context.job.strategy === SyncStrategies.ASSIGNMENT &&
+        !row.airtable_project_id
+      ) {
         context.stats.skipped++;
         continue;
       }
 
       let lookupKey = "";
 
-      if (context.job.strategy === "PAYROLL") {
+      if (context.job.strategy === SyncStrategies.PAYROLL) {
         const dbUserId = row.airtable_user_id || "no_user";
         const dbProjectId = row.airtable_project_id || "no_project";
         lookupKey = `${dbUserId}_${dbProjectId}_${row.month}`;
       } else {
-        const [mName, year] = row.month.split(" ");
-        const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
-        const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
+        // Convert 'Month Year' to Airtable ISO date ('2025-01-01')
+        const [monthName, year] = row.month.split(" ");
+        const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
+        const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
 
-        const projAssigExpectedKey = `${row.airtable_project_id}_${isoDate}`;
-        const projAssigId = context.projectAssignmentMap.get(
-          projAssigExpectedKey,
+        const projectAssignmentKey = `${row.airtable_project_id}_${isoDate}`;
+        const projectAssignmentId = context.projectAssignmentMap.get(
+          projectAssignmentKey,
         );
         const personId = row.airtable_user_id || "no_person";
 
-        if (projAssigId) {
-          lookupKey = `${personId}_${projAssigId}`;
-        } else {
-          lookupKey = `unmatchable_${personId}_${isoDate}`;
-        }
+        lookupKey = projectAssignmentId
+          ? `${personId}_${projectAssignmentId}`
+          : `unmatchable_${personId}_${isoDate}`;
       }
 
       const match = airtableMap.get(lookupKey);
@@ -124,19 +131,14 @@ export class AirtableDiffCalculator {
     supabaseHours: number,
     context: DiffContext,
   ): void {
-    if (!context.job.allowInserts) {
-      context.stats.missing++;
-      return;
-    }
-
-    if (!row.airtable_user_id) {
+    if (!context.job.allowInserts || !row.airtable_user_id) {
       context.stats.missing++;
       return;
     }
 
     let fields: Record<string, unknown> = {};
 
-    if (context.job.strategy === "PAYROLL") {
+    if (context.job.strategy === SyncStrategies.PAYROLL) {
       fields = {
         User: [row.airtable_user_id],
         Project: row.airtable_project_id ? [row.airtable_project_id] : [],
@@ -144,16 +146,19 @@ export class AirtableDiffCalculator {
         "Actual Hours": supabaseHours,
       };
     } else {
-      const [mName, year] = row.month.split(" ");
-      const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
-      const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
+      const [monthName, year] = row.month.split(" ");
+      const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
+      const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
 
-      const projAssigExpectedKey = `${row.airtable_project_id}_${isoDate}`;
+      const projectAssignmentKey = `${row.airtable_project_id}_${isoDate}`;
       const projectAssignmentId = context.projectAssignmentMap.get(
-        projAssigExpectedKey,
+        projectAssignmentKey,
       );
 
       if (!projectAssignmentId) {
+        console.warn(
+          `[DiffCalculator] Skipping insert for ${row.user_name}: Missing Project Assignment for ${row.month}`,
+        );
         context.stats.missing++;
         return;
       }
@@ -162,8 +167,7 @@ export class AirtableDiffCalculator {
         Person: [row.airtable_user_id],
         "Project Assignment": [projectAssignmentId],
         "Actual Hours": supabaseHours,
-        // Auto-zero out Assigned Hours for brand new records
-        "Assigned Hours": 0,
+        "Assigned Hours": 0, // Prevents division-by-zero errors in Airtable formulas
       };
     }
 
@@ -187,10 +191,10 @@ export class AirtableDiffCalculator {
     const isBlankButShouldBeZero = supabaseHours === 0 &&
       rawAirtableHours === undefined;
 
-    // ✅ NEW: Auto-heal existing records that have blank Assigned Hours
+    // Checks if we need to auto-heal an empty 'Assigned Hours' field
     const rawAssignedHours = match.fields["Assigned Hours"];
     const needsAssignedZero = rawAssignedHours === undefined &&
-      context.job.strategy === "ASSIGNMENT";
+      context.job.strategy === SyncStrategies.ASSIGNMENT;
 
     if (hasChanged || isBlankButShouldBeZero || needsAssignedZero) {
       const fields: Record<string, unknown> = {};
@@ -203,10 +207,7 @@ export class AirtableDiffCalculator {
         fields["Assigned Hours"] = 0;
       }
 
-      context.updates.push({
-        id: match.id,
-        fields,
-      });
+      context.updates.push({ id: match.id, fields });
       context.stats.updated++;
     } else {
       context.stats.skipped++;
