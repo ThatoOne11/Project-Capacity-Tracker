@@ -185,12 +185,15 @@ export class ReferenceSyncService {
   async getOrBuildProjectAssignments(
     sourceRows: AggregateRow[],
   ): Promise<Map<string, string>> {
-    console.log("[ReferenceSync] Verifying Project Assignments exist...");
+    console.log(
+      "[ReferenceSync] Verifying Project Assignments exist using pure IDs...",
+    );
     const tableId = AIRTABLE_CONFIG.projectAssignmentsTableId;
 
+    // Fetch using our new ID-only strategy
     const existingRecords = await this.airtable.fetchRecords(
       tableId,
-      "ASSIGNMENT",
+      "PROJECT_ASSIGNMENT",
     );
     const idMap = this.buildAssignmentMap(existingRecords);
     const missingAssignments = this.identifyMissingAssignments(
@@ -208,8 +211,13 @@ export class ReferenceSyncService {
   private buildAssignmentMap(records: AirtableRecord[]): Map<string, string> {
     const map = new Map<string, string>();
     for (const rec of records) {
-      const name = rec.fields["Name"] as string | undefined;
-      if (name) map.set(name.trim().toLowerCase(), rec.id);
+      const projects = rec.fields["Project"] as string[] | undefined;
+      const month = rec.fields["Month"] as string | undefined; // e.g., "2026-02-01"
+
+      if (projects && projects.length > 0 && month) {
+        // Create an unbreakable key: recProjectID_2026-02-01
+        map.set(`${projects[0]}_${month}`, rec.id);
+      }
     }
     return map;
   }
@@ -217,18 +225,23 @@ export class ReferenceSyncService {
   private identifyMissingAssignments(
     sourceRows: AggregateRow[],
     existingMap: Map<string, string>,
-  ): Map<string, { projectId: string; month: string }> {
-    const missing = new Map<string, { projectId: string; month: string }>();
+  ): Map<string, { projectId: string; isoDate: string }> {
+    const missing = new Map<string, { projectId: string; isoDate: string }>();
 
     for (const row of sourceRows) {
       if (!row.airtable_project_id) continue;
-      const expectedName = `${row.project_name} - ${row.month}`.trim()
-        .toLowerCase();
 
-      if (!existingMap.has(expectedName) && !missing.has(expectedName)) {
-        missing.set(expectedName, {
+      // Convert "February 2026" to "2026-02-01"
+      const [mName, year] = row.month.split(" ");
+      const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
+      const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
+
+      const key = `${row.airtable_project_id}_${isoDate}`;
+
+      if (!existingMap.has(key) && !missing.has(key)) {
+        missing.set(key, {
           projectId: row.airtable_project_id,
-          month: row.month,
+          isoDate: isoDate,
         });
       }
     }
@@ -237,7 +250,7 @@ export class ReferenceSyncService {
 
   private async createMissingAssignments(
     tableId: string,
-    missing: Map<string, { projectId: string; month: string }>,
+    missing: Map<string, { projectId: string; isoDate: string }>,
     idMap: Map<string, string>,
   ): Promise<void> {
     console.log(
@@ -245,21 +258,17 @@ export class ReferenceSyncService {
     );
 
     for (const [key, data] of missing.entries()) {
-      const [mName, year] = data.month.split(" ");
-      const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
-      const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
-
       try {
         const newId = await this.airtable.createReferenceRecord(tableId, {
           Project: [data.projectId],
-          Month: isoDate,
+          Month: data.isoDate,
         });
         idMap.set(key, newId);
-        console.log(`[ReferenceSync] Created Project Assignment: ${key}`);
+        console.log(`[ReferenceSync] ✔️ Created Project Assignment: ${key}`);
       } catch (err: unknown) {
         const error = err as Error;
         console.error(
-          `[ReferenceSync] Failed to create Project Assignment ${key}:`,
+          `[ReferenceSync] ❌ Failed to create Project Assignment ${key}:`,
           error.message,
         );
       }

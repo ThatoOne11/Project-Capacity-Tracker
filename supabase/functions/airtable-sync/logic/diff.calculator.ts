@@ -120,15 +120,26 @@ export class AirtableDiffCalculator {
         "Actual Hours": supabaseHours,
       };
     } else {
-      const expectedName = `${row.project_name} - ${row.month}`.trim()
-        .toLowerCase();
-      const projectAssignmentId = context.projectAssignmentMap.get(
-        expectedName,
-      );
+      // Safety Check: Cannot create assignment without a project ID
+      if (!row.airtable_project_id) {
+        console.warn(
+          `[Diff] No Project ID for ${row.user_name} in ${row.month}. Skipping.`,
+        );
+        context.stats.missing++;
+        return;
+      }
+
+      // Rebuild the unbreakable ID key for the lookup
+      const [mName, year] = row.month.split(" ");
+      const mIndex = new Date(`${mName} 1, 2000`).getMonth() + 1;
+      const isoDate = `${year}-${mIndex.toString().padStart(2, "0")}-01`;
+      const expectedKey = `${row.airtable_project_id}_${isoDate}`;
+
+      const projectAssignmentId = context.projectAssignmentMap.get(expectedKey);
 
       if (!projectAssignmentId) {
         console.warn(
-          `[Diff] Missing Project Assignment ID for ${expectedName}. Skipping row.`,
+          `[Diff] Missing Project Assignment ID for ${expectedKey}. Skipping row.`,
         );
         context.stats.missing++;
         return;

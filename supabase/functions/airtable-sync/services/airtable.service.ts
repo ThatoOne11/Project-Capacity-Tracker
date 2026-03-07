@@ -17,7 +17,7 @@ export class AirtableService {
 
   async fetchRecords(
     tableId: string,
-    strategy: "PAYROLL" | "ASSIGNMENT",
+    strategy: "PAYROLL" | "ASSIGNMENT" | "PROJECT_ASSIGNMENT",
   ): Promise<AirtableRecord[]> {
     const allRecords: AirtableRecord[] = [];
     let offset: string | undefined = undefined;
@@ -29,10 +29,15 @@ export class AirtableService {
         params.append("fields[]", "User");
         params.append("fields[]", "Project");
         params.append("fields[]", "Month");
-      } else {
+        params.append("fields[]", "Actual Hours");
+      } else if (strategy === "ASSIGNMENT") {
         params.append("fields[]", "Name");
+        params.append("fields[]", "Actual Hours");
+      } else if (strategy === "PROJECT_ASSIGNMENT") {
+        // Pull pure IDs and Dates to avoid naming mismatches!
+        params.append("fields[]", "Project");
+        params.append("fields[]", "Month");
       }
-      params.append("fields[]", "Actual Hours");
 
       if (offset) params.append("offset", offset);
 
