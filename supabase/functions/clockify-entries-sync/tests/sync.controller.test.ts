@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert";
-import { SyncController } from "./sync.controller.ts";
 import { SyncService } from "../services/sync.service.ts";
+import { SyncController } from "../controllers/sync.controller.ts";
 
 Deno.test("SyncController - Zod Validation & HTTP Suite", async (t) => {
   // 1. Create a Mock Service

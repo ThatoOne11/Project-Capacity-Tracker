@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert";
-import { BackfillController } from "./backfill.controller.ts";
 import { BackfillService } from "../services/backfill.service.ts";
+import { BackfillController } from "../controller/backfill.controller.ts";
 
 Deno.test("BackfillController - Zod Validation & HTTP Suite", async (t) => {
   // 1. Create a "Mock" Service that does fake work instantly
