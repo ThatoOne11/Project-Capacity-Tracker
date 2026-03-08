@@ -98,7 +98,7 @@ export class AirtableDiffCalculator {
     strategy: AirtableSyncStrategy,
     context: DiffContext,
   ): void {
-    if (!context.job.allowInserts || !row.airtable_user_id) {
+    if (!context.job.allowInserts || !row.airtable_user_id?.trim()) {
       context.stats.missing++;
       return;
     }
