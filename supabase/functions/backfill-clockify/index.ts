@@ -6,8 +6,12 @@ import { BackfillService } from "./services/backfill.service.ts";
 import { BackfillController } from "./controller/backfill.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 import { SlackService } from "../_shared/services/slack.service.ts";
+import { requireServiceRole } from "../_shared/utils/auth.utils.ts";
 
 Deno.serve(async (req: Request) => {
+  const authError = requireServiceRole(req);
+  if (authError) return authError;
+
   const slack = new SlackService();
 
   try {

@@ -9,8 +9,12 @@ import { SyncController } from "./controllers/sync.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 import { ReferenceSyncer } from "./services/reference.syncer.ts";
 import { toSafeError } from "../_shared/utils/error.utils.ts";
+import { requireServiceRole } from "../_shared/utils/auth.utils.ts";
 
 Deno.serve(async (req) => {
+  const authError = requireServiceRole(req);
+  if (authError) return authError;
+
   const slack = new SlackService();
 
   try {

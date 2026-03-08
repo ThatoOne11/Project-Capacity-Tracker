@@ -2,6 +2,7 @@ import { AIRTABLE_FIELDS } from "../../constants/airtable.constants.ts";
 import { AggregateRow } from "../../types/sync.types.ts";
 import { AirtableRecord, DiffContext } from "../../types/airtable.types.ts";
 import { AirtableSyncStrategy } from "./sync-strategy.interface.ts";
+import { formatMonthToIsoDate } from "../../../_shared/utils/date.utils.ts";
 
 export class AssignmentStrategy implements AirtableSyncStrategy {
   buildMapKey(record: AirtableRecord): string {
@@ -26,7 +27,7 @@ export class AssignmentStrategy implements AirtableSyncStrategy {
     const safeUserId = row.airtable_user_id?.trim() || "no_user";
     const safeProjectId = row.airtable_project_id?.trim() || "no_project";
 
-    const isoDate = this.formatMonthToIsoDate(row.month);
+    const isoDate = formatMonthToIsoDate(row.month);
     const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
     const projectAssignmentId = context.projectAssignmentMap.get(
       projectAssignmentKey,
@@ -45,7 +46,7 @@ export class AssignmentStrategy implements AirtableSyncStrategy {
     const safeUserId = row.airtable_user_id!.trim();
     const safeProjectId = row.airtable_project_id!.trim();
 
-    const isoDate = this.formatMonthToIsoDate(row.month);
+    const isoDate = formatMonthToIsoDate(row.month);
     const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
     const projectAssignmentId = context.projectAssignmentMap.get(
       projectAssignmentKey,
@@ -98,11 +99,5 @@ export class AssignmentStrategy implements AirtableSyncStrategy {
     }
 
     return null;
-  }
-
-  private formatMonthToIsoDate(monthString: string): string {
-    const [monthName, year] = monthString.split(" ");
-    const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
-    return `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
   }
 }

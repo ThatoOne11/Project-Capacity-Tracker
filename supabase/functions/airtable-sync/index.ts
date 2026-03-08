@@ -6,8 +6,12 @@ import { ReferenceSyncService } from "./services/reference-sync.service.ts";
 import { SyncOrchestratorService } from "./services/sync-orchestrator.service.ts";
 import { SyncController } from "./controller/sync.controller.ts";
 import { toSafeError } from "../_shared/utils/error.utils.ts";
+import { requireServiceRole } from "../_shared/utils/auth.utils.ts";
 
 Deno.serve(async (req: Request) => {
+  const authError = requireServiceRole(req);
+  if (authError) return authError;
+
   const slack = new SlackService();
 
   try {
