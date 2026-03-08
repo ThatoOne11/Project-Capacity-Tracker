@@ -92,7 +92,7 @@ export class SyncService {
         {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${SUPABASE_CONFIG.key}`,
+            "x-sync-secret": SUPABASE_CONFIG.syncApiSecret,
             "Content-Type": "application/json",
           },
         },
