@@ -1,8 +1,9 @@
 export const SUPABASE_CONFIG = {
     url: Deno.env.get("SUPABASE_URL")!,
-    key: Deno.env.get("LEGACY_SERVICE_ROLE_KEY")!,
+    key: (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? // Used for internal database operations
+        Deno.env.get("LEGACY_SERVICE_ROLE_KEY"))!,
+    syncApiSecret: Deno.env.get("SYNC_API_SECRET")!, // Used to validate incoming HTTP requests
 };
-
 export const CLOCKIFY_CONFIG = {
     apiKey: Deno.env.get("CLOCKIFY_API_KEY")!,
     workspaceId: Deno.env.get("CLOCKIFY_WORKSPACE_ID")!,
