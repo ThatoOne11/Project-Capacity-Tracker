@@ -10,8 +10,8 @@ import {
 } from "../types/airtable.types.ts";
 import { AggregateRow } from "../types/sync.types.ts";
 
-//Calculates the exact insertions and updates required to sync Supabase aggregates
-// with existing Airtable records, ensuring zero ghost rows and preventing data loss.
+// Calculates required insertions and updates to sync Supabase aggregates
+// with Airtable. Prevents ghost rows and protects against data loss.
 export class AirtableDiffCalculator {
   static calculateDiffs(
     sourceRows: AggregateRow[],
@@ -95,31 +95,7 @@ export class AirtableDiffCalculator {
         continue;
       }
 
-      let lookupKey = "";
-      const safeUserId = row.airtable_user_id
-        ? row.airtable_user_id.trim()
-        : "no_user";
-      const safeProjectId = row.airtable_project_id
-        ? row.airtable_project_id.trim()
-        : "no_project";
-
-      if (context.job.strategy === SyncStrategies.PAYROLL) {
-        lookupKey = `${safeUserId}_${safeProjectId}_${row.month}`;
-      } else {
-        const [monthName, year] = row.month.split(" ");
-        const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
-        const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
-
-        const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
-        const projectAssignmentId = context.projectAssignmentMap.get(
-          projectAssignmentKey,
-        );
-
-        lookupKey = projectAssignmentId
-          ? `${safeUserId}_${projectAssignmentId}`
-          : `unmatchable_${safeUserId}_${isoDate}`;
-      }
-
+      const lookupKey = this.generateLookupKey(row, context);
       const match = airtableMap.get(lookupKey);
       const supabaseHours = Number.parseFloat(row.total_hours) || 0;
 
@@ -141,44 +117,11 @@ export class AirtableDiffCalculator {
       return;
     }
 
-    let fields: Record<string, unknown> = {};
+    const fields = this.buildInsertFields(row, supabaseHours, context);
 
-    const safeUserId = row.airtable_user_id.trim();
-    const safeProjectId = row.airtable_project_id
-      ? row.airtable_project_id.trim()
-      : null;
-
-    if (context.job.strategy === SyncStrategies.PAYROLL) {
-      fields = {
-        [AIRTABLE_FIELDS.USER]: [safeUserId],
-        [AIRTABLE_FIELDS.PROJECT]: safeProjectId ? [safeProjectId] : [],
-        [AIRTABLE_FIELDS.MONTH]: row.month,
-        [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
-      };
-    } else {
-      const [monthName, year] = row.month.split(" ");
-      const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
-      const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
-
-      const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
-      const projectAssignmentId = context.projectAssignmentMap.get(
-        projectAssignmentKey,
-      );
-
-      if (!projectAssignmentId) {
-        console.warn(
-          `[DiffCalculator] Skipping insert for ${row.user_name}: Missing Project Assignment for ${row.month}`,
-        );
-        context.stats.missing++;
-        return;
-      }
-
-      fields = {
-        [AIRTABLE_FIELDS.PERSON]: [safeUserId],
-        [AIRTABLE_FIELDS.PROJECT_ASSIGNMENT]: [projectAssignmentId],
-        [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
-        [AIRTABLE_FIELDS.ASSIGNED_HOURS]: 0,
-      };
+    if (!fields) {
+      context.stats.missing++;
+      return;
     }
 
     context.inserts.push({ fields });
@@ -201,6 +144,7 @@ export class AirtableDiffCalculator {
     const isBlankButShouldBeZero = supabaseHours === 0 &&
       rawAirtableHours === undefined;
 
+    // Identify records missing assigned hours to prevent Airtable formula crashes
     const rawAssignedHours = match.fields[AIRTABLE_FIELDS.ASSIGNED_HOURS];
     const needsAssignedZero = rawAssignedHours === undefined &&
       context.job.strategy === SyncStrategies.ASSIGNMENT;
@@ -239,5 +183,73 @@ export class AirtableDiffCalculator {
         context.stats.updated++;
       }
     }
+  }
+
+  //Helper Methods
+  private static generateLookupKey(
+    row: AggregateRow,
+    context: DiffContext,
+  ): string {
+    const safeUserId = row.airtable_user_id?.trim() || "no_user";
+    const safeProjectId = row.airtable_project_id?.trim() || "no_project";
+
+    if (context.job.strategy === SyncStrategies.PAYROLL) {
+      return `${safeUserId}_${safeProjectId}_${row.month}`;
+    }
+
+    const isoDate = this.formatMonthToIsoDate(row.month);
+    const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
+    const projectAssignmentId = context.projectAssignmentMap.get(
+      projectAssignmentKey,
+    );
+
+    return projectAssignmentId
+      ? `${safeUserId}_${projectAssignmentId}`
+      : `unmatchable_${safeUserId}_${isoDate}`;
+  }
+
+  private static buildInsertFields(
+    row: AggregateRow,
+    supabaseHours: number,
+    context: DiffContext,
+  ): Record<string, unknown> | null {
+    const safeUserId = row.airtable_user_id!.trim();
+    const safeProjectId = row.airtable_project_id?.trim() || null;
+
+    if (context.job.strategy === SyncStrategies.PAYROLL) {
+      return {
+        [AIRTABLE_FIELDS.USER]: [safeUserId],
+        [AIRTABLE_FIELDS.PROJECT]: safeProjectId ? [safeProjectId] : [],
+        [AIRTABLE_FIELDS.MONTH]: row.month,
+        [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
+      };
+    }
+
+    const isoDate = this.formatMonthToIsoDate(row.month);
+    const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
+    const projectAssignmentId = context.projectAssignmentMap.get(
+      projectAssignmentKey,
+    );
+
+    if (!projectAssignmentId) {
+      console.warn(
+        `[DiffCalculator] Skipping insert for ${row.user_name}: Missing Project Assignment for ${row.month}`,
+      );
+      return null;
+    }
+
+    return {
+      [AIRTABLE_FIELDS.PERSON]: [safeUserId],
+      [AIRTABLE_FIELDS.PROJECT_ASSIGNMENT]: [projectAssignmentId],
+      [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
+      [AIRTABLE_FIELDS.ASSIGNED_HOURS]: 0,
+    };
+  }
+
+  //Converts "February 2026" into Airtable's required "2026-02-01" ISO format
+  private static formatMonthToIsoDate(monthString: string): string {
+    const [monthName, year] = monthString.split(" ");
+    const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
+    return `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
   }
 }
