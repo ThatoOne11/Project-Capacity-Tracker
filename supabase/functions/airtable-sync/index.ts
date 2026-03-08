@@ -5,6 +5,7 @@ import { AirtableService } from "./services/airtable.service.ts";
 import { ReferenceSyncService } from "./services/reference-sync.service.ts";
 import { SyncOrchestratorService } from "./services/sync-orchestrator.service.ts";
 import { SyncController } from "./controller/sync.controller.ts";
+import { toSafeError } from "../_shared/utils/error.utils.ts";
 
 Deno.serve(async (req: Request) => {
   const slack = new SlackService();
@@ -27,13 +28,16 @@ Deno.serve(async (req: Request) => {
 
     return await controller.handleRequest(req);
   } catch (err: unknown) {
-    const error = err as Error;
-    console.error(`[Airtable-sync] Initialization Error: ${error.message}`);
+    const error = toSafeError(err);
 
-    await slack.sendAlert("[Airtable-sync]", error.message);
+    console.error(`Airtable Sync Initialization Error: ${error.message}`);
+    await slack.sendAlert("Airtable-sync Edge Function", error.message);
 
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({
+        success: false,
+        error: "Initialization failed.",
+      }),
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }

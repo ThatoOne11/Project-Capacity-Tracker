@@ -8,6 +8,7 @@ import { UserEntrySyncer } from "./services/user-entry.syncer.ts";
 import { SyncController } from "./controllers/sync.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 import { ReferenceSyncer } from "./services/reference.syncer.ts";
+import { toSafeError } from "../_shared/utils/error.utils.ts";
 
 Deno.serve(async (req) => {
   const slack = new SlackService();
@@ -29,7 +30,8 @@ Deno.serve(async (req) => {
 
     return await controller.handleRequest(req);
   } catch (err: unknown) {
-    const error = err as Error;
+    const error = toSafeError(err);
+
     console.error(
       `[Clockify-entries-sync] Initialization Error: ${error.message}`,
     );
@@ -37,7 +39,10 @@ Deno.serve(async (req) => {
     await slack.sendAlert("[Clockify-entries-sync]", error.message);
 
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({
+        success: false,
+        error: "Initialization failed.",
+      }),
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }

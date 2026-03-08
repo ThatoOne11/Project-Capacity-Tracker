@@ -4,6 +4,8 @@ import { SUPABASE_CONFIG } from "../../_shared/config.ts";
 import { SyncUtils } from "../utils/sync.utils.ts";
 import { UserEntrySyncer } from "./user-entry.syncer.ts";
 import { ReferenceSyncer } from "./reference.syncer.ts";
+import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
+import { toSafeError } from "../../_shared/utils/error.utils.ts";
 
 export class SyncService {
   constructor(
@@ -23,8 +25,9 @@ export class SyncService {
     const isDeepClean = lookbackDays > 1;
 
     console.log(
-      `Sync Mode: ${isDeepClean ? "DEEP CLEAN" : "FAST"} ` +
-        `(Window: ${lookbackDays} days, Start: ${startDate})`,
+      `Sync Mode: ${
+        isDeepClean ? "DEEP CLEAN" : "FAST"
+      } (Window: ${lookbackDays} days, Start: ${startDate})`,
     );
 
     try {
@@ -43,32 +46,28 @@ export class SyncService {
         try {
           await this.userSyncer.syncUser(user, startDate, stats);
         } catch (err) {
-          console.warn(
-            `   Error syncing ${user.name}: ${(err as Error).message}`,
-          );
-          userErrors.push(`${user.name}: ${(err as Error).message}`);
+          const safeError = toSafeError(err);
+          console.warn(`   Error syncing ${user.name}: ${safeError.message}`);
+          userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
         }
       }
 
       if (userErrors.length > 0) {
-        throw new Error(
-          `Sync completed with errors for some users: ${userErrors.join("; ")}`,
+        // Throw custom exception
+        throw new DownstreamSyncError(
+          `Sync completed with errors for ${userErrors.length} users.`,
         );
       }
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = toSafeError(err).message;
       await this.slack.sendAlert("syncRecentData", msg);
       throw err;
     }
 
     // Finalize & Report
     SyncUtils.finalizeStats(stats, startTime);
-
-    // Only hit Slack if any work was done
-    const hasChanges = stats.upserted > 0 ||
-      stats.deleted > 0 ||
-      stats.newUsers.length > 0 ||
-      stats.renamedUsers.length > 0 ||
+    const hasChanges = stats.upserted > 0 || stats.deleted > 0 ||
+      stats.newUsers.length > 0 || stats.renamedUsers.length > 0 ||
       stats.newProjects.length > 0;
 
     //Only send the report if it's the Deep Clean Cron
@@ -85,7 +84,8 @@ export class SyncService {
   async triggerAirtableSync(): Promise<void> {
     console.log("Changes detected. Triggering Airtable Sync...");
 
-    let response;
+    let response: Response;
+
     try {
       response = await fetch(
         `${SUPABASE_CONFIG.url}/functions/v1/airtable-sync`,
@@ -98,10 +98,12 @@ export class SyncService {
         },
       );
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = toSafeError(err).message;
       console.error(`Failed to reach Airtable Sync function: ${msg}`);
       await this.slack.sendAlert("triggerAirtableSync in SyncService", msg);
-      throw new Error(`Airtable Sync Request Failed: ${msg}`);
+      throw new DownstreamSyncError(
+        "Airtable Sync Request Failed.",
+      );
     }
 
     if (!response.ok) {
@@ -114,7 +116,9 @@ export class SyncService {
         errorMsg,
       );
 
-      throw new Error(`Airtable Sync Failed: ${errorMsg}`);
+      throw new DownstreamSyncError(
+        "Airtable Sync Failed",
+      );
     }
 
     console.log("Airtable sync triggered successfully.");

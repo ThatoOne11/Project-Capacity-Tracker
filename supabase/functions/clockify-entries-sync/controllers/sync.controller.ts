@@ -1,5 +1,7 @@
 import { SyncRequestSchema } from "../../_shared/types/sync.types.ts";
 import { SyncService } from "../services/sync.service.ts";
+import { ValidationError } from "../../_shared/exceptions/custom.exceptions.ts";
+import { toSafeError } from "../../_shared/utils/error.utils.ts";
 
 export class SyncController {
   constructor(private readonly service: SyncService) {}
@@ -13,9 +15,14 @@ export class SyncController {
       if (rawText.trim()) {
         try {
           const body = SyncRequestSchema.parse(JSON.parse(rawText));
-          if (body.lookbackDays) lookbackDays = body.lookbackDays;
+          if (body.lookbackDays) {
+            lookbackDays = body.lookbackDays;
+          }
         } catch (err) {
-          throw new Error(`Invalid sync payload: ${(err as Error).message}`);
+          // Throw custom ValidationError
+          throw new ValidationError(
+            `Invalid sync payload: ${toSafeError(err).message}`,
+          );
         }
       }
 
@@ -37,15 +44,21 @@ export class SyncController {
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     } catch (err: unknown) {
-      const error = err as Error;
+      const error = toSafeError(err);
+
+      // Log the raw error internally for debugging
       console.error("Sync Error:", error.message);
 
-      // Return 400 for bad payloads, 500 for server/downstream crashes
-      const isValidationError = error.message.includes("Invalid sync payload");
+      const isValidationError = error instanceof ValidationError;
       const status = isValidationError ? 400 : 500;
 
+      // Sanitize the output sent to the client.
+      const safeClientMessage = isValidationError
+        ? error.message
+        : "Internal server error.";
+
       return new Response(
-        JSON.stringify({ success: false, error: error.message }),
+        JSON.stringify({ success: false, error: safeClientMessage }),
         { status, headers: { "Content-Type": "application/json" } },
       );
     }
