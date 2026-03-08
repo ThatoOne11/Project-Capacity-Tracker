@@ -173,7 +173,7 @@ export class ReferenceSyncService {
         console.log(
           `[ReferenceSync] Created & Linked: ${record.name} (${newAirtableId})`,
         );
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       } catch (err: unknown) {
         console.error(
           `[ReferenceSync] Failed to link ${record.name}:`,
