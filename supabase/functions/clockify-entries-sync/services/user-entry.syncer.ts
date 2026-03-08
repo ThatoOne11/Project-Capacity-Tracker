@@ -13,27 +13,23 @@ export class UserEntrySyncer {
     startDate: string,
     stats: SyncReportStats,
   ) {
-    try {
-      const entries = await this.clockify.fetchRecentUserEntries(
-        user.clockify_id,
-        startDate,
-      );
+    const entries = await this.clockify.fetchRecentUserEntries(
+      user.clockify_id,
+      startDate,
+    );
 
-      const { upserted, deleted } = await this.repo.syncUserTimeWindow(
-        user.id,
-        startDate,
-        entries,
-      );
+    const { upserted, deleted } = await this.repo.syncUserTimeWindow(
+      user.id,
+      startDate,
+      entries,
+    );
 
-      stats.upserted += upserted;
-      stats.deleted += deleted;
-      stats.usersScanned++;
+    stats.upserted += upserted;
+    stats.deleted += deleted;
+    stats.usersScanned++;
 
-      if (upserted + deleted > 0) {
-        console.log(`   ${user.name}: ${upserted} synced, ${deleted} deleted.`);
-      }
-    } catch (err) {
-      console.warn(`   Error syncing ${user.name}: ${(err as Error).message}`);
+    if (upserted + deleted > 0) {
+      console.log(`   ${user.name}: ${upserted} synced, ${deleted} deleted.`);
     }
   }
 }

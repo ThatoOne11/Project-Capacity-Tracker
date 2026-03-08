@@ -1,5 +1,7 @@
 import { BackfillService } from "../services/backfill.service.ts";
 import { BackfillRequestBody, BackfillRequestSchema } from "../types/types.ts";
+import { ValidationError } from "../../_shared/exceptions/custom.exceptions.ts";
+import { toSafeError } from "../../_shared/utils/error.utils.ts";
 
 export class BackfillController {
   constructor(private readonly service: BackfillService) {}
@@ -14,7 +16,9 @@ export class BackfillController {
         try {
           body = BackfillRequestSchema.parse(JSON.parse(rawText));
         } catch (err) {
-          throw new Error(`Invalid JSON payload: ${(err as Error).message}`);
+          throw new ValidationError(
+            `Invalid JSON payload: ${toSafeError(err).message}`,
+          );
         }
       }
 
@@ -32,15 +36,24 @@ export class BackfillController {
       // 3. Success Response
       return new Response(
         JSON.stringify({ success: true, synced: totalSynced }),
-        { headers: { "Content-Type": "application/json" } },
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     } catch (err: unknown) {
-      const error = err as Error;
+      const error = toSafeError(err);
+
       console.error("Backfill Failed:", error.message);
 
+      const isValidationError = error instanceof ValidationError;
+      const status = isValidationError ? 400 : 500;
+
+      // Sanitize output
+      const safeClientMessage = isValidationError
+        ? error.message
+        : "Internal server error";
+
       return new Response(
-        JSON.stringify({ success: false, error: error.message }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+        JSON.stringify({ success: false, error: safeClientMessage }),
+        { status, headers: { "Content-Type": "application/json" } },
       );
     }
   }
