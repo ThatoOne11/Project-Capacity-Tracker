@@ -41,6 +41,7 @@ export class BackfillService {
     );
 
     let totalSynced = 0;
+    const userErrors: string[] = [];
 
     // B. Loop through every user
     for (const user of dbUsers) {
@@ -76,8 +77,16 @@ export class BackfillService {
         console.error(
           `   FAILED to backfill ${user.name}: ${(err as Error).message}`,
         );
-        // Loop continues to next user automatically
+        userErrors.push(`${user.name}: ${(err as Error).message}`);
       }
+    }
+
+    if (userErrors.length > 0) {
+      throw new Error(
+        `Backfill completed with errors for some users: ${
+          userErrors.join("; ")
+        }`,
+      );
     }
 
     return totalSynced;

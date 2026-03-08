@@ -28,17 +28,32 @@ export class SyncService {
     );
 
     try {
-      // 1. Sync References from Clockify
+      // Sync References from Clockify
       console.log("Syncing References (Users/Projects/Clients)...");
       await this.refSyncer.syncReferences(stats);
 
-      // 2. Fetch Users
+      // Fetch Users
       const users = await this.refRepo.fetchActiveUsers();
       console.log(`Checking ${users.length} users...`);
 
-      // 3. Process Users
+      const userErrors: string[] = [];
+
+      // Process Users
       for (const user of users) {
-        await this.userSyncer.syncUser(user, startDate, stats);
+        try {
+          await this.userSyncer.syncUser(user, startDate, stats);
+        } catch (err) {
+          console.warn(
+            `   Error syncing ${user.name}: ${(err as Error).message}`,
+          );
+          userErrors.push(`${user.name}: ${(err as Error).message}`);
+        }
+      }
+
+      if (userErrors.length > 0) {
+        throw new Error(
+          `Sync completed with errors for some users: ${userErrors.join("; ")}`,
+        );
       }
     } catch (err) {
       const msg = (err as Error).message;
@@ -46,7 +61,7 @@ export class SyncService {
       throw err;
     }
 
-    // 4. Finalize & Report
+    // Finalize & Report
     SyncUtils.finalizeStats(stats, startTime);
 
     // Only hit Slack if any work was done
@@ -69,8 +84,10 @@ export class SyncService {
   // Triggers the Airtable sync function with Slack Alerting
   async triggerAirtableSync(): Promise<void> {
     console.log("Changes detected. Triggering Airtable Sync...");
+
+    let response;
     try {
-      const response = await fetch(
+      response = await fetch(
         `${SUPABASE_CONFIG.url}/functions/v1/airtable-sync`,
         {
           method: "POST",
@@ -80,27 +97,26 @@ export class SyncService {
           },
         },
       );
-
-      if (response.ok) {
-        console.log("Airtable sync triggered successfully.");
-      } else {
-        const errorText = await response.text();
-        const errorMsg = `Status: ${response.status} | Body: ${errorText}`;
-
-        console.error(`Failed to trigger Airtable sync: ${errorMsg}`);
-
-        //Send Slack Alert
-        await this.slack.sendAlert(
-          "triggerAirtableSync in SyncService",
-          errorMsg,
-        );
-      }
     } catch (err) {
       const msg = (err as Error).message;
-      console.error(`Internal Server Error: ${msg}`);
-
-      //Send Slack Alert
+      console.error(`Failed to reach Airtable Sync function: ${msg}`);
       await this.slack.sendAlert("triggerAirtableSync in SyncService", msg);
+      throw new Error(`Airtable Sync Request Failed: ${msg}`);
     }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      const errorMsg = `Status: ${response.status} | Body: ${errorText}`;
+
+      console.error(`Failed to trigger Airtable sync: ${errorMsg}`);
+      await this.slack.sendAlert(
+        "triggerAirtableSync in SyncService",
+        errorMsg,
+      );
+
+      throw new Error(`Airtable Sync Failed: ${errorMsg}`);
+    }
+
+    console.log("Airtable sync triggered successfully.");
   }
 }

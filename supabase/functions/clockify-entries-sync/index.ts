@@ -10,23 +10,35 @@ import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 import { ReferenceSyncer } from "./services/reference.syncer.ts";
 
 Deno.serve(async (req) => {
-  const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
-
-  // 1. Shared Services & Repos
-  const clockifyService = new ClockifyService(
-    CLOCKIFY_CONFIG.apiKey,
-    CLOCKIFY_CONFIG.workspaceId,
-  );
   const slack = new SlackService();
-  const timeEntryRepo = new TimeEntryRepository(supabase);
-  const refRepo = new ReferenceRepository(supabase);
 
-  // 2. Domain Specific Logic & Main Orchestrator
-  const userSyncer = new UserEntrySyncer(clockifyService, timeEntryRepo);
-  const refSyncer = new ReferenceSyncer(clockifyService, refRepo);
-  const syncService = new SyncService(refRepo, userSyncer, refSyncer, slack);
-  const controller = new SyncController(syncService);
+  try {
+    const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
 
-  // 3. Execute
-  return await controller.handleRequest(req);
+    const clockifyService = new ClockifyService(
+      CLOCKIFY_CONFIG.apiKey,
+      CLOCKIFY_CONFIG.workspaceId,
+    );
+    const timeEntryRepo = new TimeEntryRepository(supabase);
+    const refRepo = new ReferenceRepository(supabase);
+
+    const userSyncer = new UserEntrySyncer(clockifyService, timeEntryRepo);
+    const refSyncer = new ReferenceSyncer(clockifyService, refRepo);
+    const syncService = new SyncService(refRepo, userSyncer, refSyncer, slack);
+    const controller = new SyncController(syncService);
+
+    return await controller.handleRequest(req);
+  } catch (err: unknown) {
+    const error = err as Error;
+    console.error(
+      `[Clockify-entries-sync] Initialization Error: ${error.message}`,
+    );
+
+    await slack.sendAlert("[Clockify-entries-sync]", error.message);
+
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 });

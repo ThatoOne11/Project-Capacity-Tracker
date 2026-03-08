@@ -13,9 +13,7 @@ export class SyncController {
       if (rawText.trim()) {
         try {
           const body = SyncRequestSchema.parse(JSON.parse(rawText));
-          if (body.lookbackDays) {
-            lookbackDays = body.lookbackDays;
-          }
+          if (body.lookbackDays) lookbackDays = body.lookbackDays;
         } catch (err) {
           throw new Error(`Invalid sync payload: ${(err as Error).message}`);
         }
@@ -36,15 +34,19 @@ export class SyncController {
           synced: totalSynced,
           mode: lookbackDays === 1 ? "FAST" : "DEEP",
         }),
-        { headers: { "Content-Type": "application/json" } },
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     } catch (err: unknown) {
       const error = err as Error;
       console.error("Sync Error:", error.message);
 
+      // Return 400 for bad payloads, 500 for server/downstream crashes
+      const isValidationError = error.message.includes("Invalid sync payload");
+      const status = isValidationError ? 400 : 500;
+
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+        { status, headers: { "Content-Type": "application/json" } },
       );
     }
   }

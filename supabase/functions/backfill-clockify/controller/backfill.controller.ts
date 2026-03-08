@@ -32,15 +32,18 @@ export class BackfillController {
       // 3. Success Response
       return new Response(
         JSON.stringify({ success: true, synced: totalSynced }),
-        { headers: { "Content-Type": "application/json" } },
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     } catch (err: unknown) {
       const error = err as Error;
       console.error("Backfill Failed:", error.message);
 
+      const isValidationError = error.message.includes("Invalid JSON payload");
+      const status = isValidationError ? 400 : 500;
+
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+        { status, headers: { "Content-Type": "application/json" } },
       );
     }
   }

@@ -7,23 +7,34 @@ import { SyncOrchestratorService } from "./services/sync-orchestrator.service.ts
 import { SyncController } from "./controller/sync.controller.ts";
 
 Deno.serve(async (req: Request) => {
-  // 1. Initialize Clients
-  const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
   const slack = new SlackService();
 
-  // Dependency Injection
-  const airtable = new AirtableService(
-    AIRTABLE_CONFIG.pat,
-    AIRTABLE_CONFIG.baseId,
-  );
-  const referenceSync = new ReferenceSyncService(supabase, airtable);
-  const orchestratorService = new SyncOrchestratorService(
-    supabase,
-    slack,
-    airtable,
-    referenceSync,
-  );
-  const controller = new SyncController(orchestratorService, slack);
+  try {
+    const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
 
-  return await controller.handleRequest(req);
+    const airtable = new AirtableService(
+      AIRTABLE_CONFIG.pat,
+      AIRTABLE_CONFIG.baseId,
+    );
+    const referenceSync = new ReferenceSyncService(supabase, airtable);
+    const orchestratorService = new SyncOrchestratorService(
+      supabase,
+      slack,
+      airtable,
+      referenceSync,
+    );
+    const controller = new SyncController(orchestratorService, slack);
+
+    return await controller.handleRequest(req);
+  } catch (err: unknown) {
+    const error = err as Error;
+    console.error(`[Airtable-sync] Initialization Error: ${error.message}`);
+
+    await slack.sendAlert("[Airtable-sync]", error.message);
+
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 });
