@@ -7,7 +7,8 @@ import {
   ReferenceRecord,
   ViewRow,
 } from "../types/types.ts";
-import { SyncStrategies } from "../consts/consts.ts";
+import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
+import { SyncStrategies } from "../constants/consts.ts";
 
 // Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
 // before attempting to sync numerical time entries.
@@ -29,7 +30,7 @@ export class ReferenceSyncService {
       await this.syncTable(
         "clockify_users",
         AIRTABLE_CONFIG.employeesTableId,
-        "Full Name",
+        AIRTABLE_FIELDS.FULL_NAME,
         activeUsers,
       );
     }
@@ -95,7 +96,7 @@ export class ReferenceSyncService {
     await this.createMissingRecords(
       "clockify_projects",
       AIRTABLE_CONFIG.projectsTableId,
-      "Name",
+      AIRTABLE_FIELDS.NAME,
       missingProjects,
     );
 
@@ -110,7 +111,7 @@ export class ReferenceSyncService {
         await this.createMissingRecords(
           "clockify_clients",
           AIRTABLE_CONFIG.clientsTableId,
-          "Name",
+          AIRTABLE_FIELDS.NAME,
           missingClients,
         );
       }
@@ -209,8 +210,10 @@ export class ReferenceSyncService {
   private buildAssignmentMap(records: AirtableRecord[]): Map<string, string> {
     const map = new Map<string, string>();
     for (const rec of records) {
-      const projects = rec.fields["Project"] as string[] | undefined;
-      const month = rec.fields["Month"] as string | undefined;
+      const projects = rec.fields[AIRTABLE_FIELDS.PROJECT] as
+        | string[]
+        | undefined;
+      const month = rec.fields[AIRTABLE_FIELDS.MONTH] as string | undefined;
 
       if (projects && projects.length > 0 && month) {
         map.set(`${projects[0]}_${month}`, rec.id);
@@ -256,11 +259,11 @@ export class ReferenceSyncService {
     for (const [key, data] of missing.entries()) {
       try {
         const newId = await this.airtable.createReferenceRecord(tableId, {
-          Project: [data.projectId],
-          Month: data.isoDate,
-          "Commitment Hours": 0,
-          "Hours to be Paid": 0,
-          "Original Invoice AMount": 0,
+          [AIRTABLE_FIELDS.PROJECT]: [data.projectId],
+          [AIRTABLE_FIELDS.MONTH]: data.isoDate,
+          [AIRTABLE_FIELDS.COMMITMENT_HOURS]: 0,
+          [AIRTABLE_FIELDS.HOURS_TO_BE_PAID]: 0,
+          [AIRTABLE_FIELDS.ORIGINAL_INVOICE_AMOUNT]: 0,
         });
         idMap.set(key, newId);
       } catch (err: unknown) {

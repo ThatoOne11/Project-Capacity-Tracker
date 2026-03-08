@@ -1,7 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
 import { AggregateRow, AirtableRecord, SyncJob } from "../types/types.ts";
-import { SyncStrategies } from "../consts/consts.ts";
+import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
+import { SyncStrategies } from "../constants/consts.ts";
 
 Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
   const job: SyncJob = {
@@ -33,7 +34,7 @@ Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
     assertEquals(stats.inserted, 1);
     assertEquals(inserts.length, 1);
     assertEquals(updates.length, 0);
-    assertEquals(inserts[0].fields["Actual Hours"], 15.5);
+    assertEquals(inserts[0].fields[AIRTABLE_FIELDS.ACTUAL_HOURS], 15.5);
   });
 
   await t.step("Creates update payload when hours differ", () => {
@@ -44,7 +45,7 @@ Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
         airtable_project_id: "recProject1",
         project_name: "MotionAds",
         month: "February 2026",
-        total_hours: "20.0", // New hours
+        total_hours: "20.0",
       },
     ];
 
@@ -52,10 +53,10 @@ Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
       {
         id: "recExistingAirtable1",
         fields: {
-          User: ["recUser1"],
-          Project: ["recProject1"],
-          Month: "February 2026",
-          "Actual Hours": 15.5, // Old hours
+          [AIRTABLE_FIELDS.USER]: ["recUser1"],
+          [AIRTABLE_FIELDS.PROJECT]: ["recProject1"],
+          [AIRTABLE_FIELDS.MONTH]: "February 2026",
+          [AIRTABLE_FIELDS.ACTUAL_HOURS]: 15.5,
         },
       },
     ];
@@ -69,7 +70,7 @@ Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
     assertEquals(stats.updated, 1);
     assertEquals(updates.length, 1);
     assertEquals(inserts.length, 0);
-    assertEquals(updates[0].fields["Actual Hours"], 20.0);
+    assertEquals(updates[0].fields[AIRTABLE_FIELDS.ACTUAL_HOURS], 20.0);
   });
 });
 
@@ -87,7 +88,7 @@ Deno.test("AirtableDiffCalculator - Assignment Strategy (Shields & Auto-Healing)
       {
         airtable_user_id: "recUser1",
         user_name: "Jess Shepherd",
-        airtable_project_id: null, // Missing project!
+        airtable_project_id: null,
         project_name: "No Project",
         month: "February 2026",
         total_hours: "5.0",
@@ -127,10 +128,9 @@ Deno.test("AirtableDiffCalculator - Assignment Strategy (Shields & Auto-Healing)
         {
           id: "recExistingAirtable1",
           fields: {
-            Person: ["recUser1"],
-            "Project Assignment": ["recProjAssig1"],
-            "Actual Hours": 10.0,
-            // 'Assigned Hours' is entirely missing/undefined
+            [AIRTABLE_FIELDS.PERSON]: ["recUser1"],
+            [AIRTABLE_FIELDS.PROJECT_ASSIGNMENT]: ["recProjAssig1"],
+            [AIRTABLE_FIELDS.ACTUAL_HOURS]: 10.0,
           },
         },
       ];
@@ -143,7 +143,7 @@ Deno.test("AirtableDiffCalculator - Assignment Strategy (Shields & Auto-Healing)
       );
 
       assertEquals(stats.updated, 1);
-      assertEquals(updates[0].fields["Assigned Hours"], 0); // Successfully healed
+      assertEquals(updates[0].fields[AIRTABLE_FIELDS.ASSIGNED_HOURS], 0);
     },
   );
 });

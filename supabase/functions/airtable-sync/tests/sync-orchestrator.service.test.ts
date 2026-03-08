@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { SyncOrchestratorService } from "../services/sync-orchestrator.service.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
 import { AirtableUpdate } from "../types/types.ts";
+import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 
 // Extract types dynamically to completely avoid the use of 'any'
 type OrchestratorArgs = ConstructorParameters<typeof SyncOrchestratorService>;
@@ -28,9 +29,15 @@ Deno.test("SyncOrchestratorService - Execution Flow", async (t) => {
       AirtableDiffCalculator.calculateDiffs = () => ({
         inserts: [],
         updates: [
-          { id: "recDuplicate1", fields: { "Actual Hours": 5 } },
-          { id: "recDuplicate1", fields: { "Actual Hours": 10 } }, // Duplicate!
-          { id: "recUnique2", fields: { "Actual Hours": 2 } },
+          {
+            id: "recDuplicate1",
+            fields: { [AIRTABLE_FIELDS.ACTUAL_HOURS]: 5 },
+          },
+          {
+            id: "recDuplicate1",
+            fields: { [AIRTABLE_FIELDS.ACTUAL_HOURS]: 10 },
+          },
+          { id: "recUnique2", fields: { [AIRTABLE_FIELDS.ACTUAL_HOURS]: 2 } },
         ],
         stats: { updated: 3, inserted: 0, skipped: 0, missing: 0 },
       });
@@ -39,7 +46,7 @@ Deno.test("SyncOrchestratorService - Execution Flow", async (t) => {
       const mockAirtable = {
         fetchRecords: () => Promise.resolve([]),
         updateRecords: (_tableId: string, updates: AirtableUpdate[]) => {
-          capturedUpdates = updates; // Capture what the orchestrator actually sends
+          capturedUpdates = updates;
           return Promise.resolve();
         },
         createRecords: () => Promise.resolve(),
@@ -62,7 +69,7 @@ Deno.test("SyncOrchestratorService - Execution Flow", async (t) => {
       const duplicateRecord = capturedUpdates.find((u) =>
         u.id === "recDuplicate1"
       );
-      assertEquals(duplicateRecord?.fields["Actual Hours"], 10);
+      assertEquals(duplicateRecord?.fields[AIRTABLE_FIELDS.ACTUAL_HOURS], 10);
 
       // Restore original function
       AirtableDiffCalculator.calculateDiffs = originalCalculateDiffs;

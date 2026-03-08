@@ -1,4 +1,3 @@
-import { SyncStrategies } from "../consts/consts.ts";
 import {
   AggregateRow,
   AirtableInsert,
@@ -8,6 +7,8 @@ import {
   SyncJob,
   SyncStats,
 } from "../types/types.ts";
+import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
+import { SyncStrategies } from "../constants/consts.ts";
 
 //Calculates the exact insertions and updates required to sync Supabase aggregates
 // with existing Airtable records, ensuring zero ghost rows and preventing data loss.
@@ -50,20 +51,22 @@ export class AirtableDiffCalculator {
 
     for (const rec of records) {
       if (strategy === SyncStrategies.PAYROLL) {
-        const users = rec.fields["User"] as string[] | undefined;
-        const projects = rec.fields["Project"] as string[] | undefined;
-        const month = rec.fields["Month"] as string | undefined;
+        const users = rec.fields[AIRTABLE_FIELDS.USER] as string[] | undefined;
+        const projects = rec.fields[AIRTABLE_FIELDS.PROJECT] as
+          | string[]
+          | undefined;
+        const month = rec.fields[AIRTABLE_FIELDS.MONTH] as string | undefined;
 
         const userId = users?.[0] || "no_user";
         const projectId = projects?.[0] || "no_project";
-        const key = `${userId}_${projectId}_${month || ""}`;
 
-        map.set(key, rec);
+        map.set(`${userId}_${projectId}_${month || ""}`, rec);
       } else {
-        const persons = rec.fields["Person"] as string[] | undefined;
-        const projAssignments = rec.fields["Project Assignment"] as
+        const persons = rec.fields[AIRTABLE_FIELDS.PERSON] as
           | string[]
           | undefined;
+        const projAssignments = rec
+          .fields[AIRTABLE_FIELDS.PROJECT_ASSIGNMENT] as string[] | undefined;
 
         const personId = persons?.[0] || "no_person";
 
@@ -140,10 +143,12 @@ export class AirtableDiffCalculator {
 
     if (context.job.strategy === SyncStrategies.PAYROLL) {
       fields = {
-        User: [row.airtable_user_id],
-        Project: row.airtable_project_id ? [row.airtable_project_id] : [],
-        Month: row.month,
-        "Actual Hours": supabaseHours,
+        [AIRTABLE_FIELDS.USER]: [row.airtable_user_id],
+        [AIRTABLE_FIELDS.PROJECT]: row.airtable_project_id
+          ? [row.airtable_project_id]
+          : [],
+        [AIRTABLE_FIELDS.MONTH]: row.month,
+        [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
       };
     } else {
       const [monthName, year] = row.month.split(" ");
@@ -164,10 +169,10 @@ export class AirtableDiffCalculator {
       }
 
       fields = {
-        Person: [row.airtable_user_id],
-        "Project Assignment": [projectAssignmentId],
-        "Actual Hours": supabaseHours,
-        "Assigned Hours": 0, // Prevents division-by-zero errors in Airtable formulas
+        [AIRTABLE_FIELDS.PERSON]: [row.airtable_user_id],
+        [AIRTABLE_FIELDS.PROJECT_ASSIGNMENT]: [projectAssignmentId],
+        [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
+        [AIRTABLE_FIELDS.ASSIGNED_HOURS]: 0,
       };
     }
 
@@ -182,7 +187,7 @@ export class AirtableDiffCalculator {
   ): void {
     context.touchedAirtableIds.add(match.id);
 
-    const rawAirtableHours = match.fields["Actual Hours"];
+    const rawAirtableHours = match.fields[AIRTABLE_FIELDS.ACTUAL_HOURS];
     const airtableHours = typeof rawAirtableHours === "number"
       ? rawAirtableHours
       : 0;
@@ -191,8 +196,7 @@ export class AirtableDiffCalculator {
     const isBlankButShouldBeZero = supabaseHours === 0 &&
       rawAirtableHours === undefined;
 
-    // Checks if we need to auto-heal an empty 'Assigned Hours' field
-    const rawAssignedHours = match.fields["Assigned Hours"];
+    const rawAssignedHours = match.fields[AIRTABLE_FIELDS.ASSIGNED_HOURS];
     const needsAssignedZero = rawAssignedHours === undefined &&
       context.job.strategy === SyncStrategies.ASSIGNMENT;
 
@@ -200,11 +204,11 @@ export class AirtableDiffCalculator {
       const fields: Record<string, unknown> = {};
 
       if (hasChanged || isBlankButShouldBeZero) {
-        fields["Actual Hours"] = supabaseHours;
+        fields[AIRTABLE_FIELDS.ACTUAL_HOURS] = supabaseHours;
       }
 
       if (needsAssignedZero) {
-        fields["Assigned Hours"] = 0;
+        fields[AIRTABLE_FIELDS.ASSIGNED_HOURS] = 0;
       }
 
       context.updates.push({ id: match.id, fields });
@@ -219,13 +223,14 @@ export class AirtableDiffCalculator {
     context: DiffContext,
   ): void {
     for (const record of destinationRecords) {
-      if (context.touchedAirtableIds.has(record.id)) {
-        continue;
-      }
+      if (context.touchedAirtableIds.has(record.id)) continue;
 
-      const rawValue = record.fields["Actual Hours"];
+      const rawValue = record.fields[AIRTABLE_FIELDS.ACTUAL_HOURS];
       if (rawValue !== 0 && rawValue !== undefined) {
-        context.updates.push({ id: record.id, fields: { "Actual Hours": 0 } });
+        context.updates.push({
+          id: record.id,
+          fields: { [AIRTABLE_FIELDS.ACTUAL_HOURS]: 0 },
+        });
         context.stats.updated++;
       }
     }

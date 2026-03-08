@@ -1,4 +1,5 @@
-import { SyncStrategies, SyncStrategy } from "../consts/consts.ts";
+import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
+import { SyncStrategies, SyncStrategy } from "../constants/consts.ts";
 import {
   AirtableInsert,
   AirtableRecord,
@@ -28,18 +29,18 @@ export class AirtableService {
       const params = new URLSearchParams();
 
       if (strategy === SyncStrategies.PAYROLL) {
-        params.append("fields[]", "User");
-        params.append("fields[]", "Project");
-        params.append("fields[]", "Month");
-        params.append("fields[]", "Actual Hours");
+        params.append("fields[]", AIRTABLE_FIELDS.USER);
+        params.append("fields[]", AIRTABLE_FIELDS.PROJECT);
+        params.append("fields[]", AIRTABLE_FIELDS.MONTH);
+        params.append("fields[]", AIRTABLE_FIELDS.ACTUAL_HOURS);
       } else if (strategy === SyncStrategies.ASSIGNMENT) {
-        params.append("fields[]", "Person");
-        params.append("fields[]", "Project Assignment");
-        params.append("fields[]", "Actual Hours");
-        params.append("fields[]", "Assigned Hours");
+        params.append("fields[]", AIRTABLE_FIELDS.PERSON);
+        params.append("fields[]", AIRTABLE_FIELDS.PROJECT_ASSIGNMENT);
+        params.append("fields[]", AIRTABLE_FIELDS.ACTUAL_HOURS);
+        params.append("fields[]", AIRTABLE_FIELDS.ASSIGNED_HOURS);
       } else if (strategy === SyncStrategies.PROJECT_ASSIGNMENT) {
-        params.append("fields[]", "Project");
-        params.append("fields[]", "Month");
+        params.append("fields[]", AIRTABLE_FIELDS.PROJECT);
+        params.append("fields[]", AIRTABLE_FIELDS.MONTH);
       }
 
       if (offset) params.append("offset", offset);
@@ -58,7 +59,6 @@ export class AirtableService {
       if (data.records) allRecords.push(...data.records);
       offset = data.offset;
 
-      // Rate limit protection
       if (offset) await new Promise((resolve) => setTimeout(resolve, 200));
     } while (offset);
 
