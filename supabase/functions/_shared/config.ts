@@ -1,6 +1,6 @@
 export const SUPABASE_CONFIG = {
     url: Deno.env.get("SUPABASE_URL")!,
-    key: Deno.env.get("LEGACY_SERVICE_ROLE_KEY")!,
+    key: Deno.env.get("SERVICE_ROLE_KEY")!,
 };
 
 export const CLOCKIFY_CONFIG = {

@@ -9,6 +9,7 @@ import {
   SupabaseViews,
 } from "../../_shared/constants/supabase.constants.ts";
 import { AirtableRecord } from "../types/airtable.types.ts";
+import { formatMonthToIsoDate } from "../../_shared/utils/date.utils.ts";
 
 // Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
 // before attempting to sync numerical time entries.
@@ -232,9 +233,7 @@ export class ReferenceSyncService {
     for (const row of sourceRows) {
       if (!row.airtable_project_id) continue;
 
-      const [monthName, year] = row.month.split(" ");
-      const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
-      const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
+      const isoDate = formatMonthToIsoDate(row.month);
 
       const safeProjectId = row.airtable_project_id.trim();
       const key = `${safeProjectId}_${isoDate}`;
