@@ -94,7 +94,7 @@ export class AirtableService {
           `[AirtableService] Batch update failed: ${await res.text()}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
 
@@ -123,7 +123,7 @@ export class AirtableService {
           `[AirtableService] Batch insert failed: ${await res.text()}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
 

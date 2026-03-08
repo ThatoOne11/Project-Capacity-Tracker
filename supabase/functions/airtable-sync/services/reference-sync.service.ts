@@ -173,6 +173,7 @@ export class ReferenceSyncService {
         console.log(
           `[ReferenceSync] Created & Linked: ${record.name} (${newAirtableId})`,
         );
+        await new Promise((resolve) => setTimeout(resolve, 250));
       } catch (err: unknown) {
         console.error(
           `[ReferenceSync] Failed to link ${record.name}:`,
@@ -235,7 +236,8 @@ export class ReferenceSyncService {
       const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
       const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
 
-      const key = `${row.airtable_project_id}_${isoDate}`;
+      const safeProjectId = row.airtable_project_id.trim();
+      const key = `${safeProjectId}_${isoDate}`;
 
       if (!existingMap.has(key) && !missing.has(key)) {
         missing.set(key, {

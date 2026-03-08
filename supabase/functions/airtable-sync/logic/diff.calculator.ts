@@ -96,26 +96,28 @@ export class AirtableDiffCalculator {
       }
 
       let lookupKey = "";
+      const safeUserId = row.airtable_user_id
+        ? row.airtable_user_id.trim()
+        : "no_user";
+      const safeProjectId = row.airtable_project_id
+        ? row.airtable_project_id.trim()
+        : "no_project";
 
       if (context.job.strategy === SyncStrategies.PAYROLL) {
-        const dbUserId = row.airtable_user_id || "no_user";
-        const dbProjectId = row.airtable_project_id || "no_project";
-        lookupKey = `${dbUserId}_${dbProjectId}_${row.month}`;
+        lookupKey = `${safeUserId}_${safeProjectId}_${row.month}`;
       } else {
-        // Convert 'Month Year' to Airtable ISO date ('2025-01-01')
         const [monthName, year] = row.month.split(" ");
         const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
         const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
 
-        const projectAssignmentKey = `${row.airtable_project_id}_${isoDate}`;
+        const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
         const projectAssignmentId = context.projectAssignmentMap.get(
           projectAssignmentKey,
         );
-        const personId = row.airtable_user_id || "no_person";
 
         lookupKey = projectAssignmentId
-          ? `${personId}_${projectAssignmentId}`
-          : `unmatchable_${personId}_${isoDate}`;
+          ? `${safeUserId}_${projectAssignmentId}`
+          : `unmatchable_${safeUserId}_${isoDate}`;
       }
 
       const match = airtableMap.get(lookupKey);
@@ -141,12 +143,15 @@ export class AirtableDiffCalculator {
 
     let fields: Record<string, unknown> = {};
 
+    const safeUserId = row.airtable_user_id.trim();
+    const safeProjectId = row.airtable_project_id
+      ? row.airtable_project_id.trim()
+      : null;
+
     if (context.job.strategy === SyncStrategies.PAYROLL) {
       fields = {
-        [AIRTABLE_FIELDS.USER]: [row.airtable_user_id],
-        [AIRTABLE_FIELDS.PROJECT]: row.airtable_project_id
-          ? [row.airtable_project_id]
-          : [],
+        [AIRTABLE_FIELDS.USER]: [safeUserId],
+        [AIRTABLE_FIELDS.PROJECT]: safeProjectId ? [safeProjectId] : [],
         [AIRTABLE_FIELDS.MONTH]: row.month,
         [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
       };
@@ -155,7 +160,7 @@ export class AirtableDiffCalculator {
       const monthIndex = new Date(`${monthName} 1, 2000`).getMonth() + 1;
       const isoDate = `${year}-${monthIndex.toString().padStart(2, "0")}-01`;
 
-      const projectAssignmentKey = `${row.airtable_project_id}_${isoDate}`;
+      const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
       const projectAssignmentId = context.projectAssignmentMap.get(
         projectAssignmentKey,
       );
@@ -169,7 +174,7 @@ export class AirtableDiffCalculator {
       }
 
       fields = {
-        [AIRTABLE_FIELDS.PERSON]: [row.airtable_user_id],
+        [AIRTABLE_FIELDS.PERSON]: [safeUserId],
         [AIRTABLE_FIELDS.PROJECT_ASSIGNMENT]: [projectAssignmentId],
         [AIRTABLE_FIELDS.ACTUAL_HOURS]: supabaseHours,
         [AIRTABLE_FIELDS.ASSIGNED_HOURS]: 0,
