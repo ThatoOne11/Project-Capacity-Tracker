@@ -1,6 +1,6 @@
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
 import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
-import { SyncReportStats } from "../../_shared/types/types.ts";
+import { SyncReportStats } from "../../_shared/types/sync.types.ts";
 
 export class UserEntrySyncer {
   constructor(

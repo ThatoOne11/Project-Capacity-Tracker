@@ -1,4 +1,4 @@
-import { SyncReportStats } from "../../_shared/types/types.ts";
+import { SyncReportStats } from "../../_shared/types/sync.types.ts";
 
 export class SyncUtils {
   static initializeStats(): SyncReportStats {
@@ -22,7 +22,7 @@ export class SyncUtils {
   }
 
   static finalizeStats(stats: SyncReportStats, startTime: number): void {
-    stats.durationSeconds = parseFloat(
+    stats.durationSeconds = Number.parseFloat(
       ((performance.now() - startTime) / 1000).toFixed(2),
     );
   }

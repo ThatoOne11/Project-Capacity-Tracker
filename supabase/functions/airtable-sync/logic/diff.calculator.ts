@@ -1,14 +1,14 @@
+import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
+import { SyncStrategies } from "../constants/sync.consts.ts";
 import {
-  AggregateRow,
   AirtableInsert,
   AirtableRecord,
   AirtableUpdate,
   DiffContext,
   SyncJob,
   SyncStats,
-} from "../types/types.ts";
-import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
-import { SyncStrategies } from "../constants/consts.ts";
+} from "../types/airtable.types.ts";
+import { AggregateRow } from "../types/sync.types.ts";
 
 //Calculates the exact insertions and updates required to sync Supabase aggregates
 // with existing Airtable records, ensuring zero ghost rows and preventing data loss.

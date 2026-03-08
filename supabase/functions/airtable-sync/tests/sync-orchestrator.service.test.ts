@@ -1,8 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { SyncOrchestratorService } from "../services/sync-orchestrator.service.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
-import { AirtableUpdate } from "../types/types.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
+import { AirtableUpdate } from "../types/airtable.types.ts";
 
 // Extract types dynamically to completely avoid the use of 'any'
 type OrchestratorArgs = ConstructorParameters<typeof SyncOrchestratorService>;

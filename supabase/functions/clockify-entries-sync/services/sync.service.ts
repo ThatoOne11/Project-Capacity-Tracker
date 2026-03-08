@@ -81,7 +81,9 @@ export class SyncService {
         },
       );
 
-      if (!response.ok) {
+      if (response.ok) {
+        console.log("Airtable sync triggered successfully.");
+      } else {
         const errorText = await response.text();
         const errorMsg = `Status: ${response.status} | Body: ${errorText}`;
 
@@ -92,8 +94,6 @@ export class SyncService {
           "triggerAirtableSync in SyncService",
           errorMsg,
         );
-      } else {
-        console.log("Airtable sync triggered successfully.");
       }
     } catch (err) {
       const msg = (err as Error).message;

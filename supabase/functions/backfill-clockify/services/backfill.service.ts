@@ -2,6 +2,7 @@ import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
 import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
 import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
+import { SupabaseTables } from "../../_shared/constants/supabase.constants.ts";
 
 export class BackfillService {
   constructor(
@@ -24,7 +25,7 @@ export class BackfillService {
     targetUserId?: string,
   ): Promise<number> {
     // A. Get the users we need to process
-    let userQuery = this.supabase.from("clockify_users").select(
+    let userQuery = this.supabase.from(SupabaseTables.CLOCKIFY_USERS).select(
       "clockify_id, name",
     );
 

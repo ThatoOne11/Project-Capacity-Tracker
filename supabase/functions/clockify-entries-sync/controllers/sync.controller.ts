@@ -1,5 +1,5 @@
+import { SyncRequestSchema } from "../../_shared/types/sync.types.ts";
 import { SyncService } from "../services/sync.service.ts";
-import { SyncRequestSchema } from "../../_shared/types/types.ts";
 
 export class SyncController {
   constructor(private readonly service: SyncService) {}
