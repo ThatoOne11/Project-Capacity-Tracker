@@ -36,7 +36,7 @@ export class SyncOrchestratorService {
       {
         name: "People Assignments Table",
         sourceView: "monthly_aggregates_view",
-        destinationTableId: AIRTABLE_CONFIG.tableId,
+        destinationTableId: AIRTABLE_CONFIG.peopleAssignmentsTableId,
         allowInserts: true,
         strategy: SyncStrategies.ASSIGNMENT,
       },
