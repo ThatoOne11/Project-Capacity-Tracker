@@ -10,7 +10,7 @@ import {
   SyncStats,
 } from "../types/types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
-import { SyncStrategies } from "../consts/consts.ts";
+import { SyncStrategies } from "../constants/consts.ts";
 
 export class SyncOrchestratorService {
   constructor(
