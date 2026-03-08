@@ -1,14 +1,9 @@
 import { z } from "npm:zod";
+import { SyncStrategy } from "../constants/consts.ts";
 
 export const AirtableRecordSchema = z.object({
   id: z.string(),
-  fields: z.record(z.string(), z.unknown()).transform((fields) => ({
-    Name: typeof fields["Name"] === "string" ? fields["Name"] : "",
-    "Actual Hours":
-      typeof fields["Actual Hours"] === "number"
-        ? fields["Actual Hours"]
-        : undefined,
-  })),
+  fields: z.record(z.string(), z.unknown()),
 });
 
 export const AirtableResponseSchema = z.object({
@@ -16,8 +11,12 @@ export const AirtableResponseSchema = z.object({
   offset: z.string().optional(),
 });
 
+export type AirtableRecord = z.infer<typeof AirtableRecordSchema>;
+
 export type AggregateRow = {
+  airtable_user_id: string | null;
   user_name: string;
+  airtable_project_id: string | null;
   project_name: string;
   month: string;
   total_hours: string;
@@ -32,18 +31,11 @@ export type SyncStats = {
 
 export type AirtableUpdate = {
   id: string;
-  fields: {
-    "Actual Hours": number;
-  };
+  fields: Record<string, unknown>;
 };
 
 export type AirtableInsert = {
-  fields: {
-    User: string;
-    Project: string;
-    Month: string;
-    "Actual Hours": number;
-  };
+  fields: Record<string, unknown>;
 };
 
 export type SyncJob = {
@@ -51,6 +43,24 @@ export type SyncJob = {
   sourceView: string;
   destinationTableId: string;
   allowInserts: boolean;
+  strategy: SyncStrategy;
 };
 
-export type AirtableRecord = z.infer<typeof AirtableRecordSchema>;
+export type DiffContext = {
+  updates: AirtableUpdate[];
+  inserts: AirtableInsert[];
+  stats: SyncStats;
+  touchedAirtableIds: Set<string>;
+  job: SyncJob;
+  projectAssignmentMap: Map<string, string>;
+};
+
+export type ViewRow = {
+  user_name: string | null;
+  project_name: string | null;
+};
+
+export type ReferenceRecord = {
+  id: string;
+  name: string;
+};
