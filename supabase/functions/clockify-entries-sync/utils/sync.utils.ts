@@ -22,7 +22,7 @@ export class SyncUtils {
   }
 
   static finalizeStats(stats: SyncReportStats, startTime: number): void {
-    stats.durationSeconds = parseFloat(
+    stats.durationSeconds = Number.parseFloat(
       ((performance.now() - startTime) / 1000).toFixed(2),
     );
   }

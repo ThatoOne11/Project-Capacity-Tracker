@@ -11,6 +11,7 @@ import {
 } from "../types/types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
 import { SyncStrategies } from "../constants/consts.ts";
+import { SupabaseViews } from "../../_shared/constants/supabase.constants.ts";
 
 export class SyncOrchestratorService {
   constructor(
@@ -35,14 +36,14 @@ export class SyncOrchestratorService {
     const jobs: SyncJob[] = [
       {
         name: "People Assignments Table",
-        sourceView: "monthly_aggregates_view",
+        sourceView: SupabaseViews.MONTHLY_AGGREGATES,
         destinationTableId: AIRTABLE_CONFIG.peopleAssignmentsTableId,
         allowInserts: true,
         strategy: SyncStrategies.ASSIGNMENT,
       },
       {
         name: "Payroll Actuals Table",
-        sourceView: "payroll_aggregates_view",
+        sourceView: SupabaseViews.PAYROLL_AGGREGATES,
         destinationTableId: AIRTABLE_CONFIG.payrollTableId,
         allowInserts: true,
         strategy: SyncStrategies.PAYROLL,

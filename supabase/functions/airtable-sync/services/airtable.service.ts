@@ -5,9 +5,10 @@ import {
   AirtableRecord,
   AirtableResponseSchema,
 } from "../types/types.ts";
+import { ApiConstants } from "../../_shared/constants/api.constants.ts";
 
 export class AirtableService {
-  private readonly baseUrl = "https://api.airtable.com/v0";
+  private readonly baseUrl = ApiConstants.AIRTABLE_BASE_URL;
   private readonly headers: HeadersInit;
 
   constructor(private readonly pat: string, private readonly baseId: string) {

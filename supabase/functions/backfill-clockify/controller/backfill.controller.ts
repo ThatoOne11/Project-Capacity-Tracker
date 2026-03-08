@@ -12,7 +12,6 @@ export class BackfillController {
 
       if (rawText.trim()) {
         try {
-          // Zod throws a nice error if this fails
           body = BackfillRequestSchema.parse(JSON.parse(rawText));
         } catch (err) {
           throw new Error(`Invalid JSON payload: ${(err as Error).message}`);
@@ -41,7 +40,7 @@ export class BackfillController {
 
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
-        { status: 400, headers: { "Content-Type": "application/json" } }, // 400 Bad Request is more accurate here
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
   }

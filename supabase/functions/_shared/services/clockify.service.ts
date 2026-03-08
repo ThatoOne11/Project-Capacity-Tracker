@@ -9,12 +9,13 @@ import {
   ClockifyUserSchema,
 } from "../../_shared/types/types.ts";
 import { z } from "npm:zod";
+import { ApiConstants } from "../constants/api.constants.ts";
 
 export class ClockifyService {
-  private readonly baseUrl = "https://docs.clockify.me/api/v1";
+  private readonly baseUrl = ApiConstants.CLOCKIFY_BASE_URL;
   private readonly headers: HeadersInit;
 
-  constructor(apiKey: string, private workspaceId: string) {
+  constructor(apiKey: string, private readonly workspaceId: string) {
     this.headers = { "X-Api-Key": apiKey };
   }
 

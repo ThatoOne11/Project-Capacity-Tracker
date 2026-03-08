@@ -1,5 +1,6 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyTimeEntry, SyncResult, TimeEntryRow } from "../types/types.ts";
+import { SupabaseTables } from "../constants/supabase.constants.ts";
 
 export class TimeEntryRepository {
     constructor(private readonly client: SupabaseClient) {}
@@ -17,7 +18,7 @@ export class TimeEntryRepository {
         // We fetch DB IDs and diff in memory to avoid errors
         // A. Get all currently active IDs for this user & window
         const { data: existingRows, error } = await this.client
-            .from("clockify_time_entries")
+            .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
             .select("clockify_id")
             .eq("user_id", internalUserId)
             .gte("start_time", startTime)
@@ -43,7 +44,7 @@ export class TimeEntryRepository {
                 const batch = idsToDelete.slice(i, i + BATCH_SIZE);
 
                 const { error: delError } = await this.client
-                    .from("clockify_time_entries")
+                    .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
                     .update({ deleted_at: new Date().toISOString() })
                     .in("clockify_id", batch);
 
@@ -97,7 +98,7 @@ export class TimeEntryRepository {
         // C. Bulk Upsert
         if (rows.length > 0) {
             const { error } = await this.client
-                .from("clockify_time_entries")
+                .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
                 .upsert(rows, { onConflict: "clockify_id" });
 
             if (error) {
@@ -118,11 +119,15 @@ export class TimeEntryRepository {
         ];
 
         const [usersRes, projectsRes] = await Promise.all([
-            this.client.from("clockify_users").select("id, clockify_id").in(
+            this.client.from(SupabaseTables.CLOCKIFY_USERS).select(
+                "id, clockify_id",
+            ).in(
                 "clockify_id",
                 userIds,
             ),
-            this.client.from("clockify_projects").select("id, clockify_id").in(
+            this.client.from(SupabaseTables.CLOCKIFY_PROJECTS).select(
+                "id, clockify_id",
+            ).in(
                 "clockify_id",
                 projectIds,
             ),

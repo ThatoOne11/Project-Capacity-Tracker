@@ -9,6 +9,10 @@ import {
 } from "../types/types.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 import { SyncStrategies } from "../constants/consts.ts";
+import {
+  SupabaseTables,
+  SupabaseViews,
+} from "../../_shared/constants/supabase.constants.ts";
 
 // Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
 // before attempting to sync numerical time entries.
@@ -28,7 +32,7 @@ export class ReferenceSyncService {
 
     if (activeUsers.length > 0) {
       await this.syncTable(
-        "clockify_users",
+        SupabaseTables.CLOCKIFY_USERS,
         AIRTABLE_CONFIG.employeesTableId,
         AIRTABLE_FIELDS.FULL_NAME,
         activeUsers,
@@ -47,10 +51,10 @@ export class ReferenceSyncService {
     const projects = new Set<string>();
 
     const [monthly, payroll] = await Promise.all([
-      this.supabase.from("monthly_aggregates_view").select(
+      this.supabase.from(SupabaseViews.MONTHLY_AGGREGATES).select(
         "user_name, project_name",
       ),
-      this.supabase.from("payroll_aggregates_view").select(
+      this.supabase.from(SupabaseViews.PAYROLL_AGGREGATES).select(
         "user_name, project_name",
       ),
     ]);
@@ -78,7 +82,7 @@ export class ReferenceSyncService {
     activeProjectNames: string[],
   ): Promise<void> {
     const { data: projects, error } = await this.supabase
-      .from("clockify_projects")
+      .from(SupabaseTables.CLOCKIFY_PROJECTS)
       .select("id, name, client_id, airtable_id")
       .in("name", activeProjectNames);
 
@@ -94,7 +98,7 @@ export class ReferenceSyncService {
     );
 
     await this.createMissingRecords(
-      "clockify_projects",
+      SupabaseTables.CLOCKIFY_PROJECTS,
       AIRTABLE_CONFIG.projectsTableId,
       AIRTABLE_FIELDS.NAME,
       missingProjects,
@@ -102,14 +106,14 @@ export class ReferenceSyncService {
 
     if (activeClientIds.length > 0) {
       const { data: missingClients } = await this.supabase
-        .from("clockify_clients")
+        .from(SupabaseTables.CLOCKIFY_CLIENTS)
         .select("id, name")
         .is("airtable_id", null)
         .in("id", activeClientIds);
 
       if (missingClients && missingClients.length > 0) {
         await this.createMissingRecords(
-          "clockify_clients",
+          SupabaseTables.CLOCKIFY_CLIENTS,
           AIRTABLE_CONFIG.clientsTableId,
           AIRTABLE_FIELDS.NAME,
           missingClients,
