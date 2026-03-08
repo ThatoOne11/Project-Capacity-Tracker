@@ -1,10 +1,10 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SupabaseTables } from "../constants/supabase.constants.ts";
 import {
     ClockifyClient,
     ClockifyProject,
     ClockifyUser,
-} from "../types/types.ts";
-import { SupabaseTables } from "../constants/supabase.constants.ts";
+} from "../types/clockify.types.ts";
 
 export class ReferenceRepository {
     constructor(private readonly client: SupabaseClient) {}

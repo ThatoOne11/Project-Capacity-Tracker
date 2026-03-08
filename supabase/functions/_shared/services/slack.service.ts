@@ -1,5 +1,6 @@
 import { SlackClient } from "../clients/slack.client.ts";
-import { SlackPayload, SyncReportStats } from "../types/types.ts";
+import { SlackPayload } from "../types/slack.types.ts";
+import { SyncReportStats } from "../types/sync.types.ts";
 
 export class SlackService {
     private readonly client = new SlackClient();

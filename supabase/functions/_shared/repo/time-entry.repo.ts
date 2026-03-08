@@ -1,6 +1,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ClockifyTimeEntry, SyncResult, TimeEntryRow } from "../types/types.ts";
 import { SupabaseTables } from "../constants/supabase.constants.ts";
+import { ClockifyTimeEntry } from "../types/clockify.types.ts";
+import { SyncResult, TimeEntryRow } from "../types/sync.types.ts";
 
 export class TimeEntryRepository {
     constructor(private readonly client: SupabaseClient) {}

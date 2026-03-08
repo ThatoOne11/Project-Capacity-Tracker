@@ -1,11 +1,11 @@
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
-import { SyncStrategies, SyncStrategy } from "../constants/consts.ts";
+import { SyncStrategies, SyncStrategy } from "../constants/sync.consts.ts";
+import { ApiConstants } from "../../_shared/constants/api.constants.ts";
 import {
   AirtableInsert,
   AirtableRecord,
   AirtableResponseSchema,
-} from "../types/types.ts";
-import { ApiConstants } from "../../_shared/constants/api.constants.ts";
+} from "../types/airtable.types.ts";
 
 export class AirtableService {
   private readonly baseUrl = ApiConstants.AIRTABLE_BASE_URL;

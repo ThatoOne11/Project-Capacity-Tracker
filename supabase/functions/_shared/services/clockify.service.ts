@@ -1,3 +1,5 @@
+import { z } from "npm:zod";
+import { ApiConstants } from "../constants/api.constants.ts";
 import {
   ClockifyClient,
   ClockifyClientSchema,
@@ -7,9 +9,7 @@ import {
   ClockifyTimeEntrySchema,
   ClockifyUser,
   ClockifyUserSchema,
-} from "../../_shared/types/types.ts";
-import { z } from "npm:zod";
-import { ApiConstants } from "../constants/api.constants.ts";
+} from "../types/clockify.types.ts";
 
 export class ClockifyService {
   private readonly baseUrl = ApiConstants.CLOCKIFY_BASE_URL;

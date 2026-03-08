@@ -1,5 +1,5 @@
 import { SLACK_CONFIG } from "../config.ts";
-import { SlackPayload } from "../types/types.ts";
+import { SlackPayload } from "../types/slack.types.ts";
 
 export class SlackClient {
     private readonly webhookUrl = SLACK_CONFIG.webhookUrl;

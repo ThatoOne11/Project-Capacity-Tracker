@@ -3,15 +3,11 @@ import { SlackService } from "../../_shared/services/slack.service.ts";
 import { AirtableService } from "./airtable.service.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
 import { ReferenceSyncService } from "./reference-sync.service.ts";
-import {
-  AggregateRow,
-  AirtableUpdate,
-  SyncJob,
-  SyncStats,
-} from "../types/types.ts";
+import { AggregateRow } from "../types/sync.types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
-import { SyncStrategies } from "../constants/consts.ts";
+import { SyncStrategies } from "../constants/sync.consts.ts";
 import { SupabaseViews } from "../../_shared/constants/supabase.constants.ts";
+import { AirtableUpdate, SyncJob, SyncStats } from "../types/airtable.types.ts";
 
 export class SyncOrchestratorService {
   constructor(

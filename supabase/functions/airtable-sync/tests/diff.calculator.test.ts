@@ -1,8 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
-import { AggregateRow, AirtableRecord, SyncJob } from "../types/types.ts";
+import { AggregateRow } from "../types/sync.types.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
-import { SyncStrategies } from "../constants/consts.ts";
+import { SyncStrategies } from "../constants/sync.consts.ts";
+import { AirtableRecord, SyncJob } from "../types/airtable.types.ts";
 
 Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
   const job: SyncJob = {

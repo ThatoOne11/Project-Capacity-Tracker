@@ -1,18 +1,14 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { AirtableService } from "./airtable.service.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
-import {
-  AggregateRow,
-  AirtableRecord,
-  ReferenceRecord,
-  ViewRow,
-} from "../types/types.ts";
+import { AggregateRow, ReferenceRecord, ViewRow } from "../types/sync.types.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
-import { SyncStrategies } from "../constants/consts.ts";
+import { SyncStrategies } from "../constants/sync.consts.ts";
 import {
   SupabaseTables,
   SupabaseViews,
 } from "../../_shared/constants/supabase.constants.ts";
+import { AirtableRecord } from "../types/airtable.types.ts";
 
 // Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
 // before attempting to sync numerical time entries.

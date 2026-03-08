@@ -1,4 +1,4 @@
-import { SyncReportStats } from "../../_shared/types/types.ts";
+import { SyncReportStats } from "../../_shared/types/sync.types.ts";
 
 export class SyncUtils {
   static initializeStats(): SyncReportStats {
