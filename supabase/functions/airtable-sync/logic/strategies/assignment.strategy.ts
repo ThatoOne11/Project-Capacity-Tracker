@@ -43,7 +43,7 @@ export class AssignmentStrategy implements AirtableSyncStrategy {
     context: DiffContext,
   ): Record<string, unknown> | null {
     const safeUserId = row.airtable_user_id!.trim();
-    const safeProjectId = row.airtable_project_id?.trim() || null;
+    const safeProjectId = row.airtable_project_id!.trim();
 
     const isoDate = this.formatMonthToIsoDate(row.month);
     const projectAssignmentKey = `${safeProjectId}_${isoDate}`;
