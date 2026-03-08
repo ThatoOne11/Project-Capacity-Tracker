@@ -3,8 +3,9 @@ import { timingSafeEqual } from "jsr:@std/crypto/timing-safe-equal";
 
 export function requireServiceRole(req: Request): Response | null {
     const providedToken = req.headers.get("x-sync-secret")?.trim() || "";
-    const expectedKey = SUPABASE_CONFIG.syncApiSecret?.replaceAll(/['"]/g, "")
-        .trim();
+    const expectedKey = SUPABASE_CONFIG.syncApiSecret
+        ?.replaceAll(/['"]/g, "")
+        ?.trim();
 
     if (!expectedKey) {
         console.error(
