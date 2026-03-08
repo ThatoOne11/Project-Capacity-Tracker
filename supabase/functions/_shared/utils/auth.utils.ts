@@ -2,26 +2,22 @@ import { SUPABASE_CONFIG } from "../config.ts";
 import { timingSafeEqual } from "jsr:@std/crypto/timing-safe-equal";
 
 export function requireServiceRole(req: Request): Response | null {
-    // We bypass Kong's strict JWT rules by using our own custom header!
     const providedToken = req.headers.get("x-sync-secret")?.trim() || "";
     const expectedKey = SUPABASE_CONFIG.syncApiSecret?.replaceAll(/['"]/g, "")
         .trim();
 
     if (!expectedKey) {
         console.error(
-            "SYNC_API_SECRET is missing from the .env",
+            "SYNC_API_SECRET is missing",
         );
         return new Response(
             JSON.stringify({
                 success: false,
-                error: "Server Configuration Error",
+                error: "Internal Server Error",
             }),
             { status: 500, headers: { "Content-Type": "application/json" } },
         );
     }
-
-    console.log(`[AUTH DEBUG] Provided Token: "${providedToken}"`);
-    console.log(`[AUTH DEBUG] Expected Token: "${expectedKey}"`);
 
     const encoder = new TextEncoder();
     const providedBytes = encoder.encode(providedToken);
