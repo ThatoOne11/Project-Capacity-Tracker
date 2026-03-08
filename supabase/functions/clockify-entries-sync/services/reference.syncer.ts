@@ -1,6 +1,6 @@
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
 import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
-import { SyncReportStats } from "../../_shared/types/types.ts";
+import { SyncReportStats } from "../../_shared/types/sync.types.ts";
 
 export class ReferenceSyncer {
   constructor(

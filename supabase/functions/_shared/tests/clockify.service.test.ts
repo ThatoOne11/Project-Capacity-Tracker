@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert";
-import { ClockifyService } from "./clockify.service.ts";
+import { ClockifyService } from "../services/clockify.service.ts";
 
 Deno.test("ClockifyService - Zod API Protection Suite", async (t) => {
     const service = new ClockifyService("dummy_api_key", "dummy_workspace_id");

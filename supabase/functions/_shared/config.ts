@@ -11,8 +11,16 @@ export const CLOCKIFY_CONFIG = {
 export const AIRTABLE_CONFIG = {
     pat: Deno.env.get("AIRTABLE_PAT")!,
     baseId: Deno.env.get("AIRTABLE_BASE_ID")!,
-    tableId: Deno.env.get("AIRTABLE_TABLE_ID")!,
+    peopleAssignmentsTableId: Deno.env.get(
+        "AIRTABLE_PEOPLE_ASSIGNMENTS_TABLE_ID",
+    )!,
     payrollTableId: Deno.env.get("AIRTABLE_PAYROLL_TABLE_ID")!,
+    employeesTableId: Deno.env.get("AIRTABLE_EMPLOYEES_TABLE_ID")!,
+    projectsTableId: Deno.env.get("AIRTABLE_PROJECTS_TABLE_ID")!,
+    clientsTableId: Deno.env.get("AIRTABLE_CLIENTS_TABLE_ID")!,
+    projectAssignmentsTableId: Deno.env.get(
+        "AIRTABLE_PROJECT_ASSIGNMENTS_TABLE_ID",
+    )!,
 };
 
 export const SLACK_CONFIG = {

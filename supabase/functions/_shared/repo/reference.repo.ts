@@ -1,9 +1,10 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SupabaseTables } from "../constants/supabase.constants.ts";
 import {
     ClockifyClient,
     ClockifyProject,
     ClockifyUser,
-} from "../types/types.ts";
+} from "../types/clockify.types.ts";
 
 export class ReferenceRepository {
     constructor(private readonly client: SupabaseClient) {}
@@ -20,7 +21,7 @@ export class ReferenceRepository {
         // 1. Fetch existing users to compare names
         const incomingIds = users.map((u) => u.id);
         const { data: existing } = await this.client
-            .from("clockify_users")
+            .from(SupabaseTables.CLOCKIFY_USERS)
             .select("clockify_id, name")
             .in("clockify_id", incomingIds);
 
@@ -33,27 +34,28 @@ export class ReferenceRepository {
         for (const u of users) {
             const currentName = u.name ?? u.email ?? "Unknown";
 
-            if (!existingMap.has(u.id)) {
-                // ID doesn't exist -> New User
-                added.push(currentName);
-            } else {
+            if (existingMap.has(u.id)) {
                 // ID exists -> Check for Rename
                 const oldName = existingMap.get(u.id);
                 if (oldName !== currentName) {
                     renamed.push(`${oldName} ➔ ${currentName}`);
                 }
+            } else {
+                // ID doesn't exist -> New User
+                added.push(currentName);
             }
         }
 
         // 3. Perform Upsert
-        const { error } = await this.client.from("clockify_users").upsert(
-            users.map((u) => ({
-                clockify_id: u.id,
-                name: u.name ?? u.email ?? "Unknown User",
-                email: u.email,
-            })),
-            { onConflict: "clockify_id" },
-        );
+        const { error } = await this.client.from(SupabaseTables.CLOCKIFY_USERS)
+            .upsert(
+                users.map((u) => ({
+                    clockify_id: u.id,
+                    name: u.name ?? u.email ?? "Unknown User",
+                    email: u.email,
+                })),
+                { onConflict: "clockify_id" },
+            );
 
         if (error) throw new Error(`DB Error (Users): ${error.message}`);
 
@@ -69,7 +71,7 @@ export class ReferenceRepository {
         // 1. Identify New Projects
         const incomingIds = projects.map((p) => p.id);
         const { data: existing } = await this.client
-            .from("clockify_projects")
+            .from(SupabaseTables.CLOCKIFY_PROJECTS)
             .select("clockify_id")
             .in("clockify_id", incomingIds);
 
@@ -86,7 +88,7 @@ export class ReferenceRepository {
             ...new Set(projects.map((p) => p.clientId).filter(Boolean)),
         ];
         const { data: dbClients } = await this.client
-            .from("clockify_clients")
+            .from(SupabaseTables.CLOCKIFY_CLIENTS)
             .select("id, clockify_id")
             .in("clockify_id", clientIds);
 
@@ -95,7 +97,9 @@ export class ReferenceRepository {
         );
 
         // 3. Upsert
-        const { error } = await this.client.from("clockify_projects").upsert(
+        const { error } = await this.client.from(
+            SupabaseTables.CLOCKIFY_PROJECTS,
+        ).upsert(
             projects.map((p) => ({
                 clockify_id: p.id,
                 name: p.name,
@@ -118,7 +122,7 @@ export class ReferenceRepository {
         const incomingIds = clients.map((c) => c.id);
 
         const { data: existing } = await this.client
-            .from("clockify_clients")
+            .from(SupabaseTables.CLOCKIFY_CLIENTS)
             .select("clockify_id")
             .in("clockify_id", incomingIds);
 
@@ -128,7 +132,9 @@ export class ReferenceRepository {
             if (!existingSet.has(c.id)) newClientNames.push(c.name);
         });
 
-        const { error } = await this.client.from("clockify_clients").upsert(
+        const { error } = await this.client.from(
+            SupabaseTables.CLOCKIFY_CLIENTS,
+        ).upsert(
             clients.map((c) => ({ clockify_id: c.id, name: c.name })),
             { onConflict: "clockify_id" },
         );
@@ -140,7 +146,7 @@ export class ReferenceRepository {
     //Fetch logic for SyncService
     async fetchActiveUsers() {
         const { data, error } = await this.client
-            .from("clockify_users")
+            .from(SupabaseTables.CLOCKIFY_USERS)
             .select("id, clockify_id, name");
 
         if (error) throw new Error(`DB Error: ${error.message}`);

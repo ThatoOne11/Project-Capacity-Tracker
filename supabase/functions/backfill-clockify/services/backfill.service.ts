@@ -2,6 +2,9 @@ import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
 import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
 import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
+import { SupabaseTables } from "../../_shared/constants/supabase.constants.ts";
+import { toSafeError } from "../../_shared/utils/error.utils.ts";
+import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
 
 export class BackfillService {
   constructor(
@@ -24,8 +27,8 @@ export class BackfillService {
     targetUserId?: string,
   ): Promise<number> {
     // A. Get the users we need to process
-    let userQuery = this.supabase.from("clockify_users").select(
-      "clockify_id, name",
+    let userQuery = this.supabase.from(SupabaseTables.CLOCKIFY_USERS).select(
+      "id, clockify_id, name",
     );
 
     if (targetUserId) {
@@ -40,6 +43,7 @@ export class BackfillService {
     );
 
     let totalSynced = 0;
+    const userErrors: string[] = [];
 
     // B. Loop through every user
     for (const user of dbUsers) {
@@ -72,11 +76,18 @@ export class BackfillService {
           await new Promise((r) => setTimeout(r, 100));
         }
       } catch (err) {
+        const safeError = toSafeError(err);
         console.error(
-          `   FAILED to backfill ${user.name}: ${(err as Error).message}`,
+          `   FAILED to backfill ${user.name}: ${safeError.message}`,
         );
-        // Loop continues to next user automatically
+        userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
       }
+    }
+
+    if (userErrors.length > 0) {
+      throw new DownstreamSyncError(
+        `Backfill completed with partial errors for ${userErrors.length} users.`,
+      );
     }
 
     return totalSynced;
