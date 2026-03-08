@@ -9,7 +9,7 @@ export function requireServiceRole(req: Request): Response | null {
     const authHeader = req.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "").trim();
 
-    if (token !== SUPABASE_CONFIG.key) {
+    if (!SUPABASE_CONFIG.key || token !== SUPABASE_CONFIG.key) {
         console.warn("Unauthorized access attempt blocked.");
         return new Response(
             JSON.stringify({
