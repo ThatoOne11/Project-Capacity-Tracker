@@ -19,7 +19,7 @@ export class AssignmentStrategy implements AirtableSyncStrategy {
   }
 
   shouldSkipRow(row: AggregateRow): boolean {
-    return !row.airtable_project_id; // People Assignments ignore unassigned time completely
+    return !row.airtable_project_id?.trim(); // People Assignments ignore unassigned time completely
   }
 
   buildLookupKey(row: AggregateRow, context: DiffContext): string {
