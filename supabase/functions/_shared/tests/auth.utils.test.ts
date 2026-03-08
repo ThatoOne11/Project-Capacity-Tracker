@@ -3,13 +3,13 @@ import { requireServiceRole } from "../utils/auth.utils.ts";
 import { SUPABASE_CONFIG } from "../config.ts";
 
 Deno.test("AuthUtils - requireServiceRole (x-sync-secret Guard)", async (t) => {
-    // Save the original secret so we don't break other tests
+    // Save the original secret so we don't pollute or break other tests
     const originalSecret = SUPABASE_CONFIG.syncApiSecret;
 
     await t.step(
-        "1. Returns 500 Server Error if SYNC_API_SECRET is missing from environment",
+        "1. Returns 500 Internal Server Error if SYNC_API_SECRET is missing from config",
         async () => {
-            // Simulate a broken server environment
+            // Simulate a broken server environment (missing env var)
             SUPABASE_CONFIG.syncApiSecret = undefined as unknown as string;
 
             const req = new Request("https://mock.com", {
@@ -22,12 +22,12 @@ Deno.test("AuthUtils - requireServiceRole (x-sync-secret Guard)", async (t) => {
             assertEquals(res!.status, 500);
 
             const body = await res!.json();
-            assertEquals(body.error, "Server Configuration Error");
+            assertEquals(body.error, "Internal Server Error");
         },
     );
 
     await t.step(
-        "2. Returns 401 Unauthorized if x-sync-secret header is missing",
+        "2. Returns 401 Unauthorized if x-sync-secret header is missing entirely",
         async () => {
             SUPABASE_CONFIG.syncApiSecret = "valid_opaque_secret_123";
 
@@ -57,6 +57,9 @@ Deno.test("AuthUtils - requireServiceRole (x-sync-secret Guard)", async (t) => {
 
             assertNotEquals(res, null);
             assertEquals(res!.status, 401);
+
+            const body = await res!.json();
+            assertEquals(body.error, "Unauthorized");
         },
     );
 
@@ -76,6 +79,23 @@ Deno.test("AuthUtils - requireServiceRole (x-sync-secret Guard)", async (t) => {
         },
     );
 
-    // Teardown: Restore the original secret
+    await t.step(
+        "5. Successfully strips accidental literal quotes from the environment variable",
+        () => {
+            // Simulate the environment variable being loaded with literal double quotes
+            SUPABASE_CONFIG.syncApiSecret = '"valid_opaque_secret_123"';
+
+            const req = new Request("https://mock.com", {
+                headers: { "x-sync-secret": "valid_opaque_secret_123" },
+            });
+
+            const res = requireServiceRole(req);
+
+            // Should still return null (success) because .replaceAll(/['"]/g, "") cleaned the expected key
+            assertEquals(res, null);
+        },
+    );
+
+    // Teardown: Restore the original secret to maintain test isolation
     SUPABASE_CONFIG.syncApiSecret = originalSecret;
 });
