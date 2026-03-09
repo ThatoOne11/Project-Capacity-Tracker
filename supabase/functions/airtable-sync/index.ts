@@ -34,7 +34,8 @@ Deno.serve(async (req: Request) => {
   } catch (err: unknown) {
     const error = toSafeError(err);
 
-    console.error(`Airtable Sync Initialization Error: ${error.message}`);
+    console.error(`[Airtable-sync] Initialization Error: ${error.message}`);
+
     await slack.sendAlert("Airtable-sync Edge Function", error.message);
 
     return new Response(

@@ -6,6 +6,7 @@ import { BackfillService } from "./services/backfill.service.ts";
 import { BackfillController } from "./controller/backfill.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 import { SlackService } from "../_shared/services/slack.service.ts";
+import { toSafeError } from "../_shared/utils/error.utils.ts";
 import { requireServiceRole } from "../_shared/utils/auth.utils.ts";
 
 Deno.serve(async (req: Request) => {
@@ -15,10 +16,8 @@ Deno.serve(async (req: Request) => {
   const slack = new SlackService();
 
   try {
-    // 1. Initialize Clients
     const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
 
-    // 2. Initialize Shared Modules
     const clockifyService = new ClockifyService(
       CLOCKIFY_CONFIG.apiKey,
       CLOCKIFY_CONFIG.workspaceId,
@@ -27,7 +26,6 @@ Deno.serve(async (req: Request) => {
     const refRepo = new ReferenceRepository(supabase);
     const entryRepo = new TimeEntryRepository(supabase);
 
-    // 3. Initialize Domain Logic (Dependency Injection)
     const backfillService = new BackfillService(
       supabase,
       clockifyService,
@@ -36,17 +34,16 @@ Deno.serve(async (req: Request) => {
     );
     const controller = new BackfillController(backfillService);
 
-    // 4. Handle Request
     return await controller.handleRequest(req);
   } catch (err: unknown) {
-    const error = err as Error;
-    console.error(`Backfill Error: ${error.message}`);
+    const error = toSafeError(err);
 
-    // Send Slack Alert
+    console.error(`[Backfill-clockify] Initialization Error: ${error.message}`);
+
     await slack.sendAlert("Backfill-clockify Edge Function", error.message);
 
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: "Initialization failed." }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },

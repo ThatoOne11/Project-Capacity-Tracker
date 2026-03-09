@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       `[Clockify-entries-sync] Initialization Error: ${error.message}`,
     );
 
-    await slack.sendAlert("[Clockify-entries-sync]", error.message);
+    await slack.sendAlert("Clockify-entries-sync Edge Function", error.message);
 
     return new Response(
       JSON.stringify({
