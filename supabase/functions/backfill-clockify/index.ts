@@ -5,52 +5,24 @@ import { TimeEntryRepository } from "../_shared/repo/time-entry.repo.ts";
 import { BackfillService } from "./services/backfill.service.ts";
 import { BackfillController } from "./controller/backfill.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
-import { SlackService } from "../_shared/services/slack.service.ts";
-import { requireServiceRole } from "../_shared/utils/auth.utils.ts";
+import { withEdgeWrapper } from "../_shared/utils/edge.wrapper.ts";
 
-Deno.serve(async (req: Request) => {
-  const authError = requireServiceRole(req);
-  if (authError) return authError;
+Deno.serve(withEdgeWrapper("Backfill-clockify", async (req) => {
+  const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
+  const clockifyService = new ClockifyService(
+    CLOCKIFY_CONFIG.apiKey,
+    CLOCKIFY_CONFIG.workspaceId,
+  );
+  const refRepo = new ReferenceRepository(supabase);
+  const entryRepo = new TimeEntryRepository(supabase);
 
-  const slack = new SlackService();
+  const backfillService = new BackfillService(
+    supabase,
+    clockifyService,
+    refRepo,
+    entryRepo,
+  );
+  const controller = new BackfillController(backfillService);
 
-  try {
-    // 1. Initialize Clients
-    const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
-
-    // 2. Initialize Shared Modules
-    const clockifyService = new ClockifyService(
-      CLOCKIFY_CONFIG.apiKey,
-      CLOCKIFY_CONFIG.workspaceId,
-    );
-
-    const refRepo = new ReferenceRepository(supabase);
-    const entryRepo = new TimeEntryRepository(supabase);
-
-    // 3. Initialize Domain Logic (Dependency Injection)
-    const backfillService = new BackfillService(
-      supabase,
-      clockifyService,
-      refRepo,
-      entryRepo,
-    );
-    const controller = new BackfillController(backfillService);
-
-    // 4. Handle Request
-    return await controller.handleRequest(req);
-  } catch (err: unknown) {
-    const error = err as Error;
-    console.error(`Backfill Error: ${error.message}`);
-
-    // Send Slack Alert
-    await slack.sendAlert("Backfill-clockify Edge Function", error.message);
-
-    return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  }
-});
+  return await controller.handleRequest(req);
+}));
