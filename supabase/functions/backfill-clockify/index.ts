@@ -7,7 +7,7 @@ import { BackfillController } from "./controller/backfill.controller.ts";
 import { CLOCKIFY_CONFIG, SUPABASE_CONFIG } from "../_shared/config.ts";
 import { withEdgeWrapper } from "../_shared/utils/edge.wrapper.ts";
 
-Deno.serve(withEdgeWrapper("Backfill-clockify", async (req) => {
+Deno.serve(withEdgeWrapper("Backfill-clockify", async (req, _slack) => {
   const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
   const clockifyService = new ClockifyService(
     CLOCKIFY_CONFIG.apiKey,

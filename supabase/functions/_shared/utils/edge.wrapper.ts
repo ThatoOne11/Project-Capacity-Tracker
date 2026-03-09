@@ -17,7 +17,7 @@ export function withEdgeWrapper(
         } catch (err: unknown) {
             const error = toSafeError(err);
             console.error(
-                `[${functionName}] Initialization Error: ${error.message}`,
+                `[${functionName}] Execution Error: ${error.message}`,
             );
 
             await slack.sendAlert(
@@ -28,7 +28,7 @@ export function withEdgeWrapper(
             return new Response(
                 JSON.stringify({
                     success: false,
-                    error: "Initialization failed.",
+                    error: "Internal server error.",
                 }),
                 {
                     status: 500,
