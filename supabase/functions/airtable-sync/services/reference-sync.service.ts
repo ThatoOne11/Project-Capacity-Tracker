@@ -10,6 +10,7 @@ import {
 } from "../../_shared/constants/supabase.constants.ts";
 import { AirtableRecord } from "../types/airtable.types.ts";
 import { formatMonthToIsoDate } from "../../_shared/utils/date.utils.ts";
+import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
 
 // Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
 // before attempting to sync numerical time entries.
@@ -182,9 +183,13 @@ export class ReferenceSyncService {
               `[ReferenceSync] Created & Linked: ${record.name} (${newAirtableId})`,
             );
           } catch (err: unknown) {
+            const errorMessage = (err as Error).message;
             console.error(
               `[ReferenceSync] Failed to link ${record.name}:`,
-              (err as Error).message,
+              errorMessage,
+            );
+            throw new DownstreamSyncError(
+              `Failed to link ${record.name} in Airtable: ${errorMessage}`,
             );
           }
         }),
@@ -283,9 +288,13 @@ export class ReferenceSyncService {
             });
             idMap.set(key, newId);
           } catch (err: unknown) {
+            const errorMessage = (err as Error).message;
             console.error(
               `[ReferenceSync] Failed to create Project Assignment ${key}:`,
-              (err as Error).message,
+              errorMessage,
+            );
+            throw new DownstreamSyncError(
+              `Failed to create Project Assignment ${key} in Airtable: ${errorMessage}`,
             );
           }
         }),
