@@ -153,34 +153,42 @@ export class ReferenceSyncService {
       `[ReferenceSync] Creating ${records.length} missing records in ${supabaseTable}...`,
     );
 
-    for (const record of records) {
-      try {
-        const fields: Record<string, unknown> = {
-          [airtableNameField]: record.name,
-        };
+    // Process up to 5 records concurrently
+    const CONCURRENCY_LIMIT = 5;
 
-        const newAirtableId = await this.airtable.createReferenceRecord(
-          airtableTableId,
-          fields,
-        );
+    for (let i = 0; i < records.length; i += CONCURRENCY_LIMIT) {
+      const chunk = records.slice(i, i + CONCURRENCY_LIMIT);
 
-        const { error: updateErr } = await this.supabase
-          .from(supabaseTable)
-          .update({ airtable_id: newAirtableId })
-          .eq("id", record.id);
+      await Promise.all(
+        chunk.map(async (record) => {
+          try {
+            const fields: Record<string, unknown> = {
+              [airtableNameField]: record.name,
+            };
 
-        if (updateErr) throw new Error(updateErr.message);
+            const newAirtableId = await this.airtable.createReferenceRecord(
+              airtableTableId,
+              fields,
+            );
 
-        console.log(
-          `[ReferenceSync] Created & Linked: ${record.name} (${newAirtableId})`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      } catch (err: unknown) {
-        console.error(
-          `[ReferenceSync] Failed to link ${record.name}:`,
-          (err as Error).message,
-        );
-      }
+            const { error: updateErr } = await this.supabase
+              .from(supabaseTable)
+              .update({ airtable_id: newAirtableId })
+              .eq("id", record.id);
+
+            if (updateErr) throw new Error(updateErr.message);
+
+            console.log(
+              `[ReferenceSync] Created & Linked: ${record.name} (${newAirtableId})`,
+            );
+          } catch (err: unknown) {
+            console.error(
+              `[ReferenceSync] Failed to link ${record.name}:`,
+              (err as Error).message,
+            );
+          }
+        }),
+      );
     }
   }
 

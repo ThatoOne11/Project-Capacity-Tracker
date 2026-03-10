@@ -41,15 +41,25 @@ export class SyncService {
 
       const userErrors: string[] = [];
 
-      // Process Users
-      for (const user of users) {
-        try {
-          await this.userSyncer.syncUser(user, startDate, stats);
-        } catch (err) {
-          const safeError = toSafeError(err);
-          console.warn(`   Error syncing ${user.name}: ${safeError.message}`);
-          userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
-        }
+      // Process Users in chunks to respect Clockify rate limits but maximize speed
+      const CONCURRENCY_LIMIT = 5;
+
+      for (let i = 0; i < users.length; i += CONCURRENCY_LIMIT) {
+        const userChunk = users.slice(i, i + CONCURRENCY_LIMIT);
+
+        await Promise.all(
+          userChunk.map(async (user) => {
+            try {
+              await this.userSyncer.syncUser(user, startDate, stats);
+            } catch (err) {
+              const safeError = toSafeError(err);
+              console.warn(
+                `   Error syncing ${user.name}: ${safeError.message}`,
+              );
+              userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
+            }
+          }),
+        );
       }
 
       if (userErrors.length > 0) {
