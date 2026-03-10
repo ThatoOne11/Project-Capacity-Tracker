@@ -58,18 +58,17 @@ export class BackfillService {
           // Try/Catch per user to prevent one failure from stopping the whole job
           try {
             let page = 1;
-            let hasMore = true;
 
-            // C. Handle Pagination
-            while (hasMore) {
+            // C. Handle Pagination with an explicit break instead of a useless boolean
+            while (true) {
               const entries = await this.clockify.fetchUserTimeEntries(
                 user.clockify_id,
                 startDate,
                 page,
               );
 
+              // Break out of the loop when no more entries are found
               if (!entries || entries.length === 0) {
-                hasMore = false;
                 break;
               }
 

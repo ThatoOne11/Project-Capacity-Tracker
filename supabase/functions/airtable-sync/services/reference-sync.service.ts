@@ -265,22 +265,31 @@ export class ReferenceSyncService {
       `[ReferenceSync] Auto-generating ${missing.size} missing Project Assignments...`,
     );
 
-    for (const [key, data] of missing.entries()) {
-      try {
-        const newId = await this.airtable.createReferenceRecord(tableId, {
-          [AIRTABLE_FIELDS.PROJECT]: [data.projectId],
-          [AIRTABLE_FIELDS.MONTH]: data.isoDate,
-          [AIRTABLE_FIELDS.COMMITMENT_HOURS]: 0,
-          [AIRTABLE_FIELDS.HOURS_TO_BE_PAID]: 0,
-          [AIRTABLE_FIELDS.ORIGINAL_INVOICE_AMOUNT]: 0,
-        });
-        idMap.set(key, newId);
-      } catch (err: unknown) {
-        console.error(
-          `[ReferenceSync] Failed to create Project Assignment ${key}:`,
-          (err as Error).message,
-        );
-      }
+    const missingEntries = Array.from(missing.entries());
+    const CONCURRENCY_LIMIT = 5;
+
+    for (let i = 0; i < missingEntries.length; i += CONCURRENCY_LIMIT) {
+      const chunk = missingEntries.slice(i, i + CONCURRENCY_LIMIT);
+
+      await Promise.all(
+        chunk.map(async ([key, data]) => {
+          try {
+            const newId = await this.airtable.createReferenceRecord(tableId, {
+              [AIRTABLE_FIELDS.PROJECT]: [data.projectId],
+              [AIRTABLE_FIELDS.MONTH]: data.isoDate,
+              [AIRTABLE_FIELDS.COMMITMENT_HOURS]: 0,
+              [AIRTABLE_FIELDS.HOURS_TO_BE_PAID]: 0,
+              [AIRTABLE_FIELDS.ORIGINAL_INVOICE_AMOUNT]: 0,
+            });
+            idMap.set(key, newId);
+          } catch (err: unknown) {
+            console.error(
+              `[ReferenceSync] Failed to create Project Assignment ${key}:`,
+              (err as Error).message,
+            );
+          }
+        }),
+      );
     }
   }
 }

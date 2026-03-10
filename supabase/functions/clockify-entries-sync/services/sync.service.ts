@@ -6,6 +6,7 @@ import { UserEntrySyncer } from "./user-entry.syncer.ts";
 import { ReferenceSyncer } from "./reference.syncer.ts";
 import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
 import { toSafeError } from "../../_shared/utils/error.utils.ts";
+import { fetchWithBackoff } from "../../_shared/utils/api.utils.ts";
 
 export class SyncService {
   constructor(
@@ -97,7 +98,7 @@ export class SyncService {
     let response: Response;
 
     try {
-      response = await fetch(
+      response = await fetchWithBackoff(
         `${SUPABASE_CONFIG.url}/functions/v1/airtable-sync`,
         {
           method: "POST",
