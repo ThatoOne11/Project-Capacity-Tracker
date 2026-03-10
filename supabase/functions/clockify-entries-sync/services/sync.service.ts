@@ -6,6 +6,7 @@ import { UserEntrySyncer } from "./user-entry.syncer.ts";
 import { ReferenceSyncer } from "./reference.syncer.ts";
 import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
 import { toSafeError } from "../../_shared/utils/error.utils.ts";
+import { fetchWithBackoff } from "../../_shared/utils/api.utils.ts";
 
 export class SyncService {
   constructor(
@@ -41,21 +42,31 @@ export class SyncService {
 
       const userErrors: string[] = [];
 
-      // Process Users
-      for (const user of users) {
-        try {
-          await this.userSyncer.syncUser(user, startDate, stats);
-        } catch (err) {
-          const safeError = toSafeError(err);
-          console.warn(`   Error syncing ${user.name}: ${safeError.message}`);
-          userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
-        }
+      // Process Users in chunks to respect Clockify rate limits but maximize speed
+      const CONCURRENCY_LIMIT = 5;
+
+      for (let i = 0; i < users.length; i += CONCURRENCY_LIMIT) {
+        const userChunk = users.slice(i, i + CONCURRENCY_LIMIT);
+
+        await Promise.all(
+          userChunk.map(async (user) => {
+            try {
+              await this.userSyncer.syncUser(user, startDate, stats);
+            } catch (err) {
+              const safeError = toSafeError(err);
+              console.warn(
+                `   Error syncing ${user.name}: ${safeError.message}`,
+              );
+              userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
+            }
+          }),
+        );
       }
 
       if (userErrors.length > 0) {
-        // Throw custom exception
+        const detailedErrors = userErrors.join("\n");
         throw new DownstreamSyncError(
-          `Sync completed with errors for ${userErrors.length} users.`,
+          `Sync completed with errors for ${userErrors.length} users:\n${detailedErrors}`,
         );
       }
     } catch (err) {
@@ -87,7 +98,7 @@ export class SyncService {
     let response: Response;
 
     try {
-      response = await fetch(
+      response = await fetchWithBackoff(
         `${SUPABASE_CONFIG.url}/functions/v1/airtable-sync`,
         {
           method: "POST",

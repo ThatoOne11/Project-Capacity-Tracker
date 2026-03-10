@@ -45,48 +45,53 @@ export class BackfillService {
     let totalSynced = 0;
     const userErrors: string[] = [];
 
-    // B. Loop through every user
-    for (const user of dbUsers) {
-      console.log(`   👤 Processing: ${user.name}`);
+    // B. Loop through users in concurrent chunks to speed up backfill
+    const CONCURRENCY_LIMIT = 5;
 
-      // Try/Catch per user to prevent one failure from stopping the whole job
-      try {
-        let page = 1;
-        let hasMore = true;
+    for (let i = 0; i < dbUsers.length; i += CONCURRENCY_LIMIT) {
+      const userChunk = dbUsers.slice(i, i + CONCURRENCY_LIMIT);
 
-        // C. Handle Pagination
-        while (hasMore) {
-          const entries = await this.clockify.fetchUserTimeEntries(
-            user.clockify_id,
-            startDate,
-            page,
-          );
+      await Promise.all(
+        userChunk.map(async (user) => {
+          console.log(`   👤 Processing: ${user.name}`);
 
-          if (!entries || entries.length === 0) {
-            hasMore = false;
-            break;
+          // Try/Catch per user to prevent one failure from stopping the whole job
+          try {
+            let page = 1;
+
+            // C. Handle Pagination with an explicit break instead of a useless boolean
+            while (true) {
+              const entries = await this.clockify.fetchUserTimeEntries(
+                user.clockify_id,
+                startDate,
+                page,
+              );
+
+              // Break out of the loop when no more entries are found
+              if (!entries || entries.length === 0) {
+                break;
+              }
+
+              const result = await this.entryRepo.processBatch(entries);
+              totalSynced += result.synced;
+
+              page++;
+            }
+          } catch (err) {
+            const safeError = toSafeError(err);
+            console.error(
+              `   FAILED to backfill ${user.name}: ${safeError.message}`,
+            );
+            userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
           }
-
-          const result = await this.entryRepo.processBatch(entries);
-          totalSynced += result.synced;
-
-          page++;
-
-          // D. Rate Limit Protection
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      } catch (err) {
-        const safeError = toSafeError(err);
-        console.error(
-          `   FAILED to backfill ${user.name}: ${safeError.message}`,
-        );
-        userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
-      }
+        }),
+      );
     }
 
     if (userErrors.length > 0) {
+      const detailedErrors = userErrors.join("\n");
       throw new DownstreamSyncError(
-        `Backfill completed with partial errors for ${userErrors.length} users.`,
+        `Backfill completed with partial errors for ${userErrors.length} users:\n${detailedErrors}`,
       );
     }
 
