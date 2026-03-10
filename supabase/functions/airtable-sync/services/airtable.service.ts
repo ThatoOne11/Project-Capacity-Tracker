@@ -1,6 +1,7 @@
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 import { SyncStrategies, SyncStrategy } from "../constants/sync.consts.ts";
 import { ApiConstants } from "../../_shared/constants/api.constants.ts";
+import { fetchWithBackoff } from "../../_shared/utils/api.utils.ts";
 import {
   AirtableInsert,
   AirtableRecord,
@@ -48,7 +49,7 @@ export class AirtableService {
 
       const url =
         `${this.baseUrl}/${this.baseId}/${tableId}?${params.toString()}`;
-      const res = await fetch(url, { headers: this.headers });
+      const res = await fetchWithBackoff(url, { headers: this.headers });
 
       if (!res.ok) {
         throw new Error(`[AirtableService] Fetch Failed: ${await res.text()}`);
@@ -59,8 +60,6 @@ export class AirtableService {
 
       if (data.records) allRecords.push(...data.records);
       offset = data.offset;
-
-      if (offset) await new Promise((resolve) => setTimeout(resolve, 200));
     } while (offset);
 
     console.log(
@@ -83,7 +82,7 @@ export class AirtableService {
 
     for (let i = 0; i < updates.length; i += 10) {
       const chunk = updates.slice(i, i + 10);
-      const res = await fetch(url, {
+      const res = await fetchWithBackoff(url, {
         method: "PATCH",
         headers: this.headers,
         body: JSON.stringify({ records: chunk }),
@@ -94,7 +93,6 @@ export class AirtableService {
           `[AirtableService] Batch update failed: ${await res.text()}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
 
@@ -112,7 +110,7 @@ export class AirtableService {
 
     for (let i = 0; i < inserts.length; i += 10) {
       const chunk = inserts.slice(i, i + 10);
-      const res = await fetch(url, {
+      const res = await fetchWithBackoff(url, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify({ records: chunk, typecast: true }),
@@ -123,7 +121,6 @@ export class AirtableService {
           `[AirtableService] Batch insert failed: ${await res.text()}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
 
@@ -133,7 +130,7 @@ export class AirtableService {
     fields: Record<string, unknown>,
   ): Promise<string> {
     const url = `${this.baseUrl}/${this.baseId}/${tableId}`;
-    const res = await fetch(url, {
+    const res = await fetchWithBackoff(url, {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify({ records: [{ fields }] }),

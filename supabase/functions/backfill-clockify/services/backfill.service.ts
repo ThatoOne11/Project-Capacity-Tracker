@@ -71,9 +71,6 @@ export class BackfillService {
           totalSynced += result.synced;
 
           page++;
-
-          // D. Rate Limit Protection
-          await new Promise((r) => setTimeout(r, 100));
         }
       } catch (err) {
         const safeError = toSafeError(err);
@@ -85,8 +82,9 @@ export class BackfillService {
     }
 
     if (userErrors.length > 0) {
+      const detailedErrors = userErrors.join("\n");
       throw new DownstreamSyncError(
-        `Backfill completed with partial errors for ${userErrors.length} users.`,
+        `Backfill completed with partial errors for ${userErrors.length} users:\n${detailedErrors}`,
       );
     }
 

@@ -10,6 +10,7 @@ import {
   ClockifyUser,
   ClockifyUserSchema,
 } from "../types/clockify.types.ts";
+import { fetchWithBackoff } from "../utils/api.utils.ts";
 
 export class ClockifyService {
   private readonly baseUrl = ApiConstants.CLOCKIFY_BASE_URL;
@@ -40,9 +41,14 @@ export class ClockifyService {
     page: number,
     pageSize = 50,
   ): Promise<ClockifyTimeEntry[]> {
-    const query = `start=${start}&page=${page}&page-size=${pageSize}`;
+    const params = new URLSearchParams({
+      start,
+      page: page.toString(),
+      "page-size": pageSize.toString(),
+    });
+
     const data = await this.get(
-      `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${query}`,
+      `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
     );
     return z.array(ClockifyTimeEntrySchema).parse(data);
   }
@@ -88,7 +94,7 @@ export class ClockifyService {
   }
 
   private async get(endpoint: string): Promise<unknown> {
-    const res = await fetch(`${this.baseUrl}${endpoint}`, {
+    const res = await fetchWithBackoff(`${this.baseUrl}${endpoint}`, {
       headers: this.headers,
     });
     if (!res.ok) {

@@ -53,9 +53,9 @@ export class SyncService {
       }
 
       if (userErrors.length > 0) {
-        // Throw custom exception
+        const detailedErrors = userErrors.join("\n");
         throw new DownstreamSyncError(
-          `Sync completed with errors for ${userErrors.length} users.`,
+          `Sync completed with errors for ${userErrors.length} users:\n${detailedErrors}`,
         );
       }
     } catch (err) {
