@@ -61,7 +61,7 @@ export class ReferenceSyncService {
       if (!rows) return;
       for (const row of rows) {
         if (row.user_name) users.add(row.user_name);
-        if (row.project_name && row.project_name !== "No Project") {
+        if (row.project_name) {
           projects.add(row.project_name);
         }
       }
