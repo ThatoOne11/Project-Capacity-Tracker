@@ -253,7 +253,7 @@ export class ReferenceSyncService {
 
       if (!existingMap.has(key) && !missing.has(key)) {
         missing.set(key, {
-          projectId: row.airtable_project_id,
+          projectId: safeProjectId,
           isoDate: isoDate,
         });
       }
