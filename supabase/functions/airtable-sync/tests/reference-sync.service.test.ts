@@ -3,9 +3,10 @@ import { ReferenceSyncService } from "../services/reference-sync.service.ts";
 
 type RefSyncArgs = ConstructorParameters<typeof ReferenceSyncService>;
 
-Deno.test("ReferenceSyncService - Auto-Healing Suite", async (t) => {
+Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
   let createdRecordCount = 0;
   let updatedSupabaseId = "";
+  let slackInfoSent = false;
   let slackAlertSent = false;
 
   // 1. Mock Supabase (Catches the auto-healed ID)
@@ -20,21 +21,23 @@ Deno.test("ReferenceSyncService - Auto-Healing Suite", async (t) => {
     }),
   } as unknown as RefSyncArgs[0];
 
-  // 2. Mock Airtable (Pretends Airtable already has "boco")
+  // 2. Mock Airtable (Configurable per test)
+  let mockAirtableRecords: { id: string; name: string }[] = [];
   const mockAirtable = {
-    fetchAllReferenceRecords: () =>
-      Promise.resolve([
-        { id: "recRossManualBoco", name: "Boco" },
-      ]),
+    fetchAllReferenceRecords: () => Promise.resolve(mockAirtableRecords),
     createReferenceRecord: () => {
       createdRecordCount++;
       return Promise.resolve("recBrandNew");
     },
   } as unknown as RefSyncArgs[1];
 
-  // 3. Mock Slack (Verifies visibility)
+  // 3. Mock Slack (Verifies visibility & critical alerts)
   const mockSlack = {
     sendInfo: () => {
+      slackInfoSent = true;
+      return Promise.resolve();
+    },
+    sendAlert: () => {
       slackAlertSent = true;
       return Promise.resolve();
     },
@@ -46,14 +49,19 @@ Deno.test("ReferenceSyncService - Auto-Healing Suite", async (t) => {
     mockSlack,
   );
 
+  // --- TESTS ---
+
   await t.step(
-    "1. It should AUTO-HEAL and skip creation if normalized names match",
+    "1. It should AUTO-HEAL and skip creation if exactly one normalized name matches",
     async () => {
-      // Reset counters
       createdRecordCount = 0;
+      updatedSupabaseId = "";
+      slackInfoSent = false;
       slackAlertSent = false;
 
-      // Simulate the Sync asking to resolve a project with messy spacing/casing
+      // Airtable has exactly ONE "Boco"
+      mockAirtableRecords = [{ id: "recRossManualBoco", name: "Boco" }];
+
       await service["createMissingRecords"](
         "clockify_projects",
         "tblProjects",
@@ -61,22 +69,22 @@ Deno.test("ReferenceSyncService - Auto-Healing Suite", async (t) => {
         [{ id: "uuid-123", name: " BOCO " }],
       );
 
-      // ASSERTIONS:
-      // Did we skip Airtable creation?
       assertEquals(createdRecordCount, 0);
-      // Did we steal Ross's ID?
       assertEquals(updatedSupabaseId, "recRossManualBoco");
-      // Did we tell the team?
-      assertEquals(slackAlertSent, true);
+      assertEquals(slackInfoSent, true); // Logged the heal
+      assertEquals(slackAlertSent, false); // No critical error
     },
   );
 
   await t.step(
     "2. It should CREATE a new record if it truly does not exist",
     async () => {
-      // Reset counters
       createdRecordCount = 0;
+      updatedSupabaseId = "";
+      slackInfoSent = false;
       slackAlertSent = false;
+
+      mockAirtableRecords = [{ id: "recRossManualBoco", name: "Boco" }];
 
       await service["createMissingRecords"](
         "clockify_projects",
@@ -85,13 +93,44 @@ Deno.test("ReferenceSyncService - Auto-Healing Suite", async (t) => {
         [{ id: "uuid-456", name: "Completely New Project" }],
       );
 
-      // ASSERTIONS:
-      // Did it create the record in Airtable?
       assertEquals(createdRecordCount, 1);
-      // Did it link the brand new ID?
       assertEquals(updatedSupabaseId, "recBrandNew");
-      // It should NOT send a Slack info alert for standard creations
+      assertEquals(slackInfoSent, false);
       assertEquals(slackAlertSent, false);
+    },
+  );
+
+  await t.step(
+    "3. It should ABORT safely and ALERT Slack if human duplicates exist in Airtable",
+    async () => {
+      createdRecordCount = 0;
+      updatedSupabaseId = "";
+      slackInfoSent = false;
+      slackAlertSent = false;
+
+      // Airtable has TWO records that normalize to "boco"
+      mockAirtableRecords = [
+        { id: "recDuplicate1", name: "Boco" },
+        { id: "recDuplicate2", name: "BOCO " },
+      ];
+
+      await service["createMissingRecords"](
+        "clockify_projects",
+        "tblProjects",
+        "Name",
+        [{ id: "uuid-123", name: "boco" }],
+      );
+
+      // ASSERTIONS:
+      // It MUST NOT guess which ID to use. It must skip everything.
+      assertEquals(
+        createdRecordCount,
+        0,
+        "Should not create a third duplicate",
+      );
+      assertEquals(updatedSupabaseId, "", "Should not link to either ID");
+      assertEquals(slackInfoSent, false, "Should not log a successful heal");
+      assertEquals(slackAlertSent, true, "MUST trigger a critical Slack alert");
     },
   );
 });
