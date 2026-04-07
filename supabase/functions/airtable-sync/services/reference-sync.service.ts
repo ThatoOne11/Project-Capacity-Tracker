@@ -169,8 +169,23 @@ export class ReferenceSyncService {
       );
 
     const normalizedMap = new Map<string, string>();
+    const conflictedNames = new Set<string>(); // Tracks non-deterministic duplicates
+
     for (const rec of existingAirtableRecords) {
-      normalizedMap.set(this.normalizeName(rec.name), rec.id);
+      const normalized = this.normalizeName(rec.name);
+
+      if (conflictedNames.has(normalized)) {
+        continue; // Already known to be conflicted, skip
+      }
+
+      if (normalizedMap.has(normalized)) {
+        // Collision detected! Remove from valid map and flag it
+        normalizedMap.delete(normalized);
+        conflictedNames.add(normalized);
+      } else {
+        // First time seeing this name, add to map safely
+        normalizedMap.set(normalized, rec.id);
+      }
     }
 
     // Process up to 5 records concurrently
@@ -182,8 +197,20 @@ export class ReferenceSyncService {
       await Promise.all(
         chunk.map(async (record) => {
           try {
-            // 2. Check if record has been already created manually
             const normalizedSupabaseName = this.normalizeName(record.name);
+
+            // DEFENSIVE SHIELD: Refuse to process if duplicates exist in Airtable
+            if (conflictedNames.has(normalizedSupabaseName)) {
+              const msg =
+                `Multiple records found in Airtable for *${record.name}*. Cannot safely auto-heal or sync. Please delete the duplicates in Airtable.`;
+              console.warn(`[ReferenceSync] ${msg}`);
+
+              // We use sendAlert instead of sendInfo because human intervention is required
+              await this.slack.sendAlert("Airtable Data Conflict", msg);
+              return; // Skip processing this specific record
+            }
+
+            // 2. Check if record has been already created manually
             let targetAirtableId = normalizedMap.get(normalizedSupabaseName);
 
             if (targetAirtableId) {
