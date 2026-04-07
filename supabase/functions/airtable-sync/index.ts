@@ -5,6 +5,7 @@ import { ReferenceSyncService } from "./services/reference-sync.service.ts";
 import { SyncOrchestratorService } from "./services/sync-orchestrator.service.ts";
 import { SyncController } from "./controller/sync.controller.ts";
 import { withEdgeWrapper } from "../_shared/utils/edge.wrapper.ts";
+import { ReferenceRepository } from "../_shared/repo/reference.repo.ts";
 
 Deno.serve(withEdgeWrapper("Airtable-sync", async (req, slack) => {
   const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
@@ -13,12 +14,14 @@ Deno.serve(withEdgeWrapper("Airtable-sync", async (req, slack) => {
     AIRTABLE_CONFIG.baseId,
   );
   const referenceSync = new ReferenceSyncService(supabase, airtable, slack);
+  const refRepo = new ReferenceRepository(supabase);
 
   const orchestratorService = new SyncOrchestratorService(
     supabase,
     slack,
     airtable,
     referenceSync,
+    refRepo,
   );
   const controller = new SyncController(orchestratorService, slack);
 

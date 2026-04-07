@@ -19,3 +19,10 @@ export const AIRTABLE_FIELDS = {
   HOURS_TO_BE_PAID: "Hours to be Paid",
   ORIGINAL_INVOICE_AMOUNT: "Original Invoice AMount",
 } as const;
+
+// Dictionary of known Airtable errors that indicate a record was deleted
+export const GHOST_ERROR_TYPES = [
+  "INVALID_RECORD_ID",
+  "ROW_DOES_NOT_EXIST",
+  "RECORD_NOT_FOUND",
+] as const;

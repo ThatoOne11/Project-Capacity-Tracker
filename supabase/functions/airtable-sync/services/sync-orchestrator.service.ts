@@ -8,6 +8,8 @@ import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
 import { SyncStrategies } from "../constants/sync.consts.ts";
 import { SupabaseViews } from "../../_shared/constants/supabase.constants.ts";
 import { AirtableUpdate, SyncJob, SyncStats } from "../types/airtable.types.ts";
+import { GHOST_ERROR_TYPES } from "../constants/airtable.constants.ts";
+import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
 
 export class SyncOrchestratorService {
   constructor(
@@ -15,6 +17,7 @@ export class SyncOrchestratorService {
     private readonly slack: SlackService,
     private readonly airtable: AirtableService,
     private readonly referenceSync: ReferenceSyncService,
+    private readonly refRepo: ReferenceRepository,
   ) {}
 
   async runAllJobs(): Promise<{ stats: SyncStats; details: string[] }> {
@@ -25,9 +28,6 @@ export class SyncOrchestratorService {
       missing: 0,
     };
     const logMessages: string[] = [];
-
-    // Foundation logic: Establish all IDs prior to numerical sync
-    await this.referenceSync.syncAllReferences();
 
     const jobs: SyncJob[] = [
       {
@@ -46,10 +46,51 @@ export class SyncOrchestratorService {
       },
     ];
 
-    for (const job of jobs) {
-      console.log(`\n[SyncOrchestrator] Starting Job: ${job.name}`);
-      await this.executeJob(job, totalStats, logMessages);
-      console.log(`[SyncOrchestrator] Finished Job: ${job.name}`);
+    try {
+      // Foundation logic: Establish all IDs prior to numerical sync
+      await this.referenceSync.syncAllReferences();
+
+      for (const job of jobs) {
+        console.log(`\n[SyncOrchestrator] Starting Job: ${job.name}`);
+        await this.executeJob(job, totalStats, logMessages);
+        console.log(`[SyncOrchestrator] Finished Job: ${job.name}`);
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+
+      // 1. Check if the error message contains any of the known ghost types from constants
+      const isGhostError = GHOST_ERROR_TYPES.some((type) =>
+        error.message.includes(type)
+      );
+
+      if (isGhostError) {
+        // Extract the exact 17-character Airtable ID using Regex
+        const match = error.message.match(/(rec[a-zA-Z0-9]{14})/);
+
+        if (match && match[1]) {
+          const badId = match[1];
+          console.warn(
+            `[GhostBuster] Detected deleted Airtable ID: ${badId}. Nullifying in Supabase...`,
+          );
+
+          await this.refRepo.removeAirtableId(badId);
+
+          await this.slack.sendInfo(
+            "Ghost Record Caught",
+            `Airtable record *${badId}* was manually deleted or corrupted. The system has cleared the internal cache and will auto-heal the link on the next sync.`,
+          );
+
+          logMessages.push(
+            `[GhostBuster] Sync aborted early to heal deleted record ${badId}.`,
+          );
+
+          // Return gracefully! Do NOT throw a 500 error. The next cron run will fix it naturally.
+          return { stats: totalStats, details: logMessages };
+        }
+      }
+
+      // If it's a different kind of error, rethrow it to trigger the critical Slack alert
+      throw error;
     }
 
     return { stats: totalStats, details: logMessages };
