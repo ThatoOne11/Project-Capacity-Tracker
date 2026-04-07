@@ -44,6 +44,32 @@ export class SlackService {
         await this.client.post(payload);
     }
 
+    // Sends a standard informational message (e.g., Auto-healing events)
+    async sendInfo(title: string, message: string): Promise<void> {
+        const payload: SlackPayload = {
+            text: title,
+            blocks: [
+                {
+                    type: "header",
+                    text: {
+                        type: "plain_text",
+                        text: title,
+                        emoji: true,
+                    },
+                },
+                {
+                    type: "section",
+                    text: {
+                        type: "mrkdwn",
+                        text: message,
+                    },
+                },
+            ],
+        };
+
+        await this.client.post(payload);
+    }
+
     //Formats and sends the Daily Audit Sync Report
     async sendSyncReport(stats: SyncReportStats): Promise<void> {
         // 1. Format the "Changes" section
