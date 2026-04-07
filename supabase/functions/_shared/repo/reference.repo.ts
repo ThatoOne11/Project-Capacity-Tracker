@@ -152,4 +152,29 @@ export class ReferenceRepository {
         if (error) throw new Error(`DB Error: ${error.message}`);
         return data || [];
     }
+
+    // Nullifies a dead Airtable ID across all reference tables
+    async removeAirtableId(airtableId: string): Promise<void> {
+        const tables = [
+            SupabaseTables.CLOCKIFY_USERS,
+            SupabaseTables.CLOCKIFY_PROJECTS,
+            SupabaseTables.CLOCKIFY_CLIENTS,
+        ];
+
+        await Promise.all(
+            tables.map(async (table) => {
+                const { error } = await this.client
+                    .from(table)
+                    .update({ airtable_id: null })
+                    .eq("airtable_id", airtableId);
+
+                if (error) {
+                    console.error(
+                        `[ReferenceRepo] Failed to remove ghost ID in ${table}: ${error.message}`,
+                    );
+                    throw new Error(`DB Error (${table}): ${error.message}`);
+                }
+            }),
+        );
+    }
 }
