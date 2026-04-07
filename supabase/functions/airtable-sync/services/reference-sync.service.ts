@@ -11,6 +11,7 @@ import {
 import { AirtableRecord } from "../types/airtable.types.ts";
 import { formatMonthToIsoDate } from "../../_shared/utils/date.utils.ts";
 import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
+import { SlackService } from "../../_shared/services/slack.service.ts";
 
 // Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
 // before attempting to sync numerical time entries.
@@ -18,6 +19,7 @@ export class ReferenceSyncService {
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly airtable: AirtableService,
+    private readonly slack: SlackService,
   ) {}
 
   async syncAllReferences(): Promise<void> {
@@ -186,9 +188,12 @@ export class ReferenceSyncService {
 
             if (targetAirtableId) {
               // AUTO-HEAL: Match found!
-              console.log(
-                `[ReferenceSync] Auto-healed link for existing record: ${record.name} (${targetAirtableId})`,
-              );
+              const msg =
+                `Auto-healed link for existing record: *${record.name}* (${targetAirtableId})`;
+              console.log(`[ReferenceSync] ${msg}`);
+
+              // Send Slack alert
+              await this.slack.sendInfo("Airtable Auto-Heal Applied", msg);
             } else {
               // CREATE: Truly missing, insert into Airtable
               const fields: Record<string, unknown> = {

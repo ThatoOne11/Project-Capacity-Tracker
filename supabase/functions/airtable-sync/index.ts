@@ -12,7 +12,7 @@ Deno.serve(withEdgeWrapper("Airtable-sync", async (req, slack) => {
     AIRTABLE_CONFIG.pat,
     AIRTABLE_CONFIG.baseId,
   );
-  const referenceSync = new ReferenceSyncService(supabase, airtable);
+  const referenceSync = new ReferenceSyncService(supabase, airtable, slack);
 
   const orchestratorService = new SyncOrchestratorService(
     supabase,
