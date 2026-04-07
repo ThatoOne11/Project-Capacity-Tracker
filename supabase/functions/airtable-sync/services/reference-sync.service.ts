@@ -142,6 +142,11 @@ export class ReferenceSyncService {
     );
   }
 
+  // Helper to safely compare human-entered names against Clockify names
+  private normalizeName(name: string): string {
+    return name.trim().toLowerCase();
+  }
+
   private async createMissingRecords(
     supabaseTable: string,
     airtableTableId: string,
@@ -151,8 +156,20 @@ export class ReferenceSyncService {
     if (records.length === 0) return;
 
     console.log(
-      `[ReferenceSync] Creating ${records.length} missing records in ${supabaseTable}...`,
+      `[ReferenceSync] Resolving ${records.length} records in ${supabaseTable}...`,
     );
+
+    // 1. Fetch all existing records from Airtable to build the Normalized Map
+    const existingAirtableRecords = await this.airtable
+      .fetchAllReferenceRecords(
+        airtableTableId,
+        airtableNameField,
+      );
+
+    const normalizedMap = new Map<string, string>();
+    for (const rec of existingAirtableRecords) {
+      normalizedMap.set(this.normalizeName(rec.name), rec.id);
+    }
 
     // Process up to 5 records concurrently
     const CONCURRENCY_LIMIT = 5;
@@ -163,33 +180,44 @@ export class ReferenceSyncService {
       await Promise.all(
         chunk.map(async (record) => {
           try {
-            const fields: Record<string, unknown> = {
-              [airtableNameField]: record.name,
-            };
+            // 2. Check if record has been already created manually
+            const normalizedSupabaseName = this.normalizeName(record.name);
+            let targetAirtableId = normalizedMap.get(normalizedSupabaseName);
 
-            const newAirtableId = await this.airtable.createReferenceRecord(
-              airtableTableId,
-              fields,
-            );
+            if (targetAirtableId) {
+              // AUTO-HEAL: Match found!
+              console.log(
+                `[ReferenceSync] Auto-healed link for existing record: ${record.name} (${targetAirtableId})`,
+              );
+            } else {
+              // CREATE: Truly missing, insert into Airtable
+              const fields: Record<string, unknown> = {
+                [airtableNameField]: record.name,
+              };
+              targetAirtableId = await this.airtable.createReferenceRecord(
+                airtableTableId,
+                fields,
+              );
+              console.log(
+                `[ReferenceSync] Created & Linked: ${record.name} (${targetAirtableId})`,
+              );
+            }
 
+            // 3. Save the confirmed ID back to Supabase
             const { error: updateErr } = await this.supabase
               .from(supabaseTable)
-              .update({ airtable_id: newAirtableId })
+              .update({ airtable_id: targetAirtableId })
               .eq("id", record.id);
 
             if (updateErr) throw new Error(updateErr.message);
-
-            console.log(
-              `[ReferenceSync] Created & Linked: ${record.name} (${newAirtableId})`,
-            );
           } catch (err: unknown) {
             const errorMessage = (err as Error).message;
             console.error(
-              `[ReferenceSync] Failed to link ${record.name}:`,
+              `[ReferenceSync] Failed to process ${record.name}:`,
               errorMessage,
             );
             throw new DownstreamSyncError(
-              `Failed to link ${record.name} in Airtable: ${errorMessage}`,
+              `Failed to process ${record.name} in Airtable: ${errorMessage}`,
             );
           }
         }),

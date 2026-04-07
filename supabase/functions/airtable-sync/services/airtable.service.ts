@@ -145,4 +145,42 @@ export class AirtableService {
     const data = await res.json();
     return data.records[0].id;
   }
+
+  // Fetches all records from a table, returning ONLY the ID and the requested Name field.
+  // This is used for building the Normalized Lookup Map to prevent duplicates.
+  async fetchAllReferenceRecords(
+    tableId: string,
+    nameField: string,
+  ): Promise<{ id: string; name: string }[]> {
+    const allRecords: { id: string; name: string }[] = [];
+    let offset: string | undefined = undefined;
+
+    do {
+      const params = new URLSearchParams();
+      params.append("fields[]", nameField); // Only fetch the Name to save RAM/Bandwidth
+      if (offset) params.append("offset", offset);
+
+      const url =
+        `${this.baseUrl}/${this.baseId}/${tableId}?${params.toString()}`;
+      const res = await fetchWithBackoff(url, { headers: this.headers });
+
+      if (!res.ok) {
+        throw new Error(
+          `[AirtableService] Fetch Reference Records Failed: ${await res
+            .text()}`,
+        );
+      }
+
+      const data = await res.json();
+      for (const record of data.records || []) {
+        const nameValue = record.fields[nameField];
+        if (typeof nameValue === "string") {
+          allRecords.push({ id: record.id, name: nameValue });
+        }
+      }
+      offset = data.offset;
+    } while (offset);
+
+    return allRecords;
+  }
 }
