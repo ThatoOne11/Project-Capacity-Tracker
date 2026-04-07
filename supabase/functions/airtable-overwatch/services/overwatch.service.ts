@@ -19,32 +19,49 @@ export class OverwatchService {
       maxRecords?: number;
       fields?: string[];
     },
-  ): Promise<unknown> {
-    const urlParams = new URLSearchParams();
+  ): Promise<{ records: unknown[] }> {
+    const allRecords: unknown[] = [];
+    let offset: string | undefined = undefined;
 
-    if (params.filterByFormula) {
-      urlParams.append("filterByFormula", params.filterByFormula);
-    }
-    if (params.maxRecords) {
-      urlParams.append("maxRecords", params.maxRecords.toString());
-    }
-    if (params.fields) {
-      params.fields.forEach((field) => urlParams.append("fields[]", field));
-    }
+    do {
+      const urlParams = new URLSearchParams();
 
-    const url =
-      `${this.baseUrl}/${this.baseId}/${tableId}?${urlParams.toString()}`;
+      if (params.filterByFormula) {
+        urlParams.append("filterByFormula", params.filterByFormula);
+      }
+      if (params.fields) {
+        params.fields.forEach((field) => urlParams.append("fields[]", field));
+      }
 
-    // We use your shared auto-retry fetcher to respect Airtable's strict limits
-    const res = await fetchWithBackoff(url, { headers: this.headers });
+      if (offset) urlParams.append("offset", offset);
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(
-        `[Overwatch] Airtable API Error (${res.status}): ${errorText}`,
-      );
-    }
+      const url = `${this.baseUrl}/${encodeURIComponent(this.baseId)}/${
+        encodeURIComponent(tableId)
+      }?${urlParams.toString()}`;
 
-    return await res.json();
+      const res = await fetchWithBackoff(url, { headers: this.headers });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(
+          `[Overwatch] Airtable API Error (${res.status}): ${errorText}`,
+        );
+      }
+
+      const data = await res.json();
+
+      if (data.records) {
+        allRecords.push(...data.records);
+      }
+
+      offset = data.offset;
+
+      if (params.maxRecords && allRecords.length >= params.maxRecords) {
+        allRecords.length = params.maxRecords;
+        break;
+      }
+    } while (offset);
+
+    return { records: allRecords };
   }
 }
