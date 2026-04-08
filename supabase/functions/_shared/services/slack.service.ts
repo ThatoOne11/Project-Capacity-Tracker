@@ -3,9 +3,8 @@ import { SlackPayload } from "../types/slack.types.ts";
 import { SyncReportStats } from "../types/sync.types.ts";
 
 export class SlackService {
-    private readonly client = new SlackClient();
+    private readonly client: SlackClient = new SlackClient();
 
-    //Sends a critical alert for system failures
     async sendAlert(functionName: string, errorMsg: string): Promise<void> {
         const payload: SlackPayload = {
             text: "🚨 Project Capacity Tracker - Sync Failed",
@@ -44,25 +43,17 @@ export class SlackService {
         await this.client.post(payload);
     }
 
-    // Sends a standard informational message (e.g., Auto-healing events)
     async sendInfo(title: string, message: string): Promise<void> {
         const payload: SlackPayload = {
             text: title,
             blocks: [
                 {
                     type: "header",
-                    text: {
-                        type: "plain_text",
-                        text: title,
-                        emoji: true,
-                    },
+                    text: { type: "plain_text", text: title, emoji: true },
                 },
                 {
                     type: "section",
-                    text: {
-                        type: "mrkdwn",
-                        text: message,
-                    },
+                    text: { type: "mrkdwn", text: message },
                 },
             ],
         };
@@ -70,22 +61,17 @@ export class SlackService {
         await this.client.post(payload);
     }
 
-    //Formats and sends the Daily Audit Sync Report
     async sendSyncReport(stats: SyncReportStats): Promise<void> {
-        // 1. Format the "Changes" section
-        const formatList = (items: string[]) => {
-            if (items.length === 0) return null;
-            return `${items.length} (${items.join(", ")})`;
-        };
+        const formatList = (items: string[]): string | null =>
+            items.length === 0 ? null : `${items.length} (${items.join(", ")})`;
 
         const newUsersStr = formatList(stats.newUsers);
         const renamedStr = formatList(stats.renamedUsers);
         const newProjectsStr = formatList(stats.newProjects);
 
-        // Only build the "Changes" block if there ARE changes
         const hasChanges = newUsersStr || renamedStr || newProjectsStr;
-
         let changesText = "*Changes:*\n";
+
         if (hasChanges) {
             if (newUsersStr) changesText += `- New Users: ${newUsersStr}\n`;
             if (renamedStr) changesText += `- Renamed Users: ${renamedStr}\n`;
@@ -96,9 +82,12 @@ export class SlackService {
             changesText += "_No changes detected._\n";
         }
 
-        // 2. Build the Payload
+        const statusLabel = stats.status === "SUCCESS"
+            ? "SUCCESS 🟢"
+            : "FAILED 🔴";
+
         const payload: SlackPayload = {
-            text: "Project Capacity Tracker - Sync Report", // Fallback for mobile notifications
+            text: "Project Capacity Tracker - Sync Report",
             blocks: [
                 {
                     type: "header",
@@ -113,21 +102,15 @@ export class SlackService {
                     elements: [
                         {
                             type: "mrkdwn",
-                            text: `*Status:* ${
-                                stats.status === "SUCCESS"
-                                    ? "SUCCESS 🟢"
-                                    : "FAILED 🔴"
-                            }   |   *Duration:* ${stats.durationSeconds}s`,
+                            text:
+                                `*Status:* ${statusLabel}   |   *Duration:* ${stats.durationSeconds}s`,
                         },
                     ],
                 },
                 { type: "divider" },
                 {
                     type: "section",
-                    text: {
-                        type: "mrkdwn",
-                        text: changesText,
-                    },
+                    text: { type: "mrkdwn", text: changesText },
                 },
                 {
                     type: "section",

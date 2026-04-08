@@ -5,8 +5,8 @@ import { toSafeError } from "./error.utils.ts";
 export function withEdgeWrapper(
     functionName: string,
     handler: (req: Request, slack: SlackService) => Promise<Response>,
-) {
-    return async (req: Request) => {
+): (req: Request) => Promise<Response> {
+    return async (req: Request): Promise<Response> => {
         const authError = requireServiceRole(req);
         if (authError) return authError;
 

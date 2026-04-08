@@ -33,3 +33,12 @@ export type TimeEntryRow = {
     project_id: string | null;
     deleted_at: string | null;
 };
+
+// Shape for a Clockify user row as stored in Supabase.
+// Single source of truth consumed by ReferenceRepository, SyncService,
+// UserEntrySyncer, and BackfillService.
+export type DbUser = {
+    id: string;
+    clockify_id: string;
+    name: string;
+};
