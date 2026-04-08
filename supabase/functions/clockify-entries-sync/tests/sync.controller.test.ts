@@ -1,35 +1,36 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert";
 import { SyncService } from "../services/sync.service.ts";
 import { SyncController } from "../controllers/sync.controller.ts";
+import { ValidationError } from "../../_shared/exceptions/custom.exceptions.ts";
 
-Deno.test("SyncController - Zod Validation & HTTP Suite", async (t) => {
-  // 1. Create a Mock Service
+Deno.test("SyncController - Validation & HTTP Suite", async (t) => {
   const mockService = {
-    syncRecentData: (days: number) => Promise.resolve(days * 10), // Pretend we synced 'days * 10' records
-    triggerAirtableSync: () => Promise.resolve(),
+    runSync: (days: number) =>
+      Promise.resolve({
+        totalSynced: days * 10,
+        mode: days === 1 ? "FAST" : "DEEP",
+      }),
   } as unknown as SyncService;
 
   const controller = new SyncController(mockService);
 
   await t.step(
-    "1. It should default to lookbackDays: 1 (FAST mode) if body is empty",
+    "1. Defaults to lookbackDays: 1 (FAST mode) when body is empty",
     async () => {
-      const req = new Request("https://mock-edge-function.com", {
-        method: "POST",
-      });
+      const req = new Request("https://mock.com", { method: "POST" });
       const res = await controller.handleRequest(req);
       const body = await res.json();
 
       assertEquals(res.status, 200);
       assertEquals(body.mode, "FAST");
-      assertEquals(body.synced, 10); // 1 day * 10
+      assertEquals(body.synced, 10);
     },
   );
 
   await t.step(
-    "2. It should accept lookbackDays: 30 (DEEP mode) for the 3am Audit",
+    "2. Accepts lookbackDays: 30 and returns DEEP mode",
     async () => {
-      const req = new Request("https://mock-edge-function.com", {
+      const req = new Request("https://mock.com", {
         method: "POST",
         body: JSON.stringify({ lookbackDays: 30 }),
       });
@@ -39,23 +40,29 @@ Deno.test("SyncController - Zod Validation & HTTP Suite", async (t) => {
 
       assertEquals(res.status, 200);
       assertEquals(body.mode, "DEEP");
-      assertEquals(body.synced, 300); // 30 days * 10
+      assertEquals(body.synced, 300);
     },
   );
 
   await t.step(
-    "3. It should REJECT (400) if lookbackDays is a string instead of a number",
+    "3. Throws ValidationError if lookbackDays is a string instead of a number",
     async () => {
-      const req = new Request("https://mock-edge-function.com", {
+      const req = new Request("https://mock.com", {
         method: "POST",
-        body: JSON.stringify({ lookbackDays: "30" }), // Invalid string
+        body: JSON.stringify({ lookbackDays: "30" }),
       });
 
-      const res = await controller.handleRequest(req);
-      const body = await res.json();
-
-      assertEquals(res.status, 400);
-      assertStringIncludes(body.error, "expected number, received string");
+      try {
+        await controller.handleRequest(req);
+        throw new Error("Expected a ValidationError to be thrown");
+      } catch (err) {
+        const isValidation = err instanceof ValidationError;
+        assertEquals(isValidation, true);
+        assertStringIncludes(
+          (err as ValidationError).message,
+          "expected number, received string",
+        );
+      }
     },
   );
 });
