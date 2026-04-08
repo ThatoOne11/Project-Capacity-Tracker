@@ -1,11 +1,14 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SupabaseTables } from "../constants/supabase.constants.ts";
+import {
+    ReferenceTableName,
+    SupabaseTables,
+} from "../constants/supabase.constants.ts";
 import {
     ClockifyClient,
     ClockifyProject,
     ClockifyUser,
 } from "../types/clockify.types.ts";
-import { DbUser } from "../types/sync.types.ts";
+import { DbUser, ProjectRow, ReferenceRecord } from "../types/sync.types.ts";
 
 export class ReferenceRepository {
     constructor(private readonly client: SupabaseClient) {}
@@ -25,10 +28,8 @@ export class ReferenceRepository {
             .in("clockify_id", incomingIds);
 
         const existingMap = new Map<string, string>(
-            existing?.map((e: { clockify_id: string; name: string }) => [
-                e.clockify_id,
-                e.name,
-            ]) ?? [],
+            (existing as Array<{ clockify_id: string; name: string }> ?? [])
+                .map((e) => [e.clockify_id, e.name]),
         );
 
         for (const u of users) {
@@ -72,13 +73,13 @@ export class ReferenceRepository {
             .in("clockify_id", incomingIds);
 
         const existingSet = new Set<string>(
-            existing?.map((e: { clockify_id: string }) => e.clockify_id),
+            (existing as Array<{ clockify_id: string }> ?? []).map((e) =>
+                e.clockify_id
+            ),
         );
 
         for (const p of projects) {
-            if (!existingSet.has(p.id)) {
-                newProjectNames.push(p.name);
-            }
+            if (!existingSet.has(p.id)) newProjectNames.push(p.name);
         }
 
         const clientIds = [
@@ -91,10 +92,8 @@ export class ReferenceRepository {
             .in("clockify_id", clientIds);
 
         const clientMap = new Map<string, string>(
-            dbClients?.map((c: { clockify_id: string; id: string }) => [
-                c.clockify_id,
-                c.id,
-            ]) ?? [],
+            (dbClients as Array<{ clockify_id: string; id: string }> ?? [])
+                .map((c) => [c.clockify_id, c.id]),
         );
 
         const { error } = await this.client
@@ -126,7 +125,9 @@ export class ReferenceRepository {
             .in("clockify_id", incomingIds);
 
         const existingSet = new Set<string>(
-            existing?.map((e: { clockify_id: string }) => e.clockify_id),
+            (existing as Array<{ clockify_id: string }> ?? []).map((e) =>
+                e.clockify_id
+            ),
         );
 
         for (const c of clients) {
@@ -155,6 +156,74 @@ export class ReferenceRepository {
         return (data ?? []) as DbUser[];
     }
 
+    async fetchProjectsByNames(names: string[]): Promise<ProjectRow[]> {
+        const { data, error } = await this.client
+            .from(SupabaseTables.CLOCKIFY_PROJECTS)
+            .select("id, name, client_id, airtable_id")
+            .in("name", names);
+
+        if (error) {
+            throw new Error(
+                `DB Error (fetchProjectsByNames): ${error.message}`,
+            );
+        }
+        return (data ?? []) as ProjectRow[];
+    }
+
+    async fetchMissingClientsByIds(
+        clientIds: string[],
+    ): Promise<ReferenceRecord[]> {
+        const { data, error } = await this.client
+            .from(SupabaseTables.CLOCKIFY_CLIENTS)
+            .select("id, name")
+            .is("airtable_id", null)
+            .in("id", clientIds);
+
+        if (error) {
+            throw new Error(
+                `DB Error (fetchMissingClientsByIds): ${error.message}`,
+            );
+        }
+        return (data ?? []) as ReferenceRecord[];
+    }
+
+    // Fetches records from a reference table that have not yet been linked to Airtable.
+    async fetchMissingReferencesByNames(
+        table: ReferenceTableName,
+        names: string[],
+    ): Promise<ReferenceRecord[]> {
+        const { data, error } = await this.client
+            .from(table)
+            .select("id, name")
+            .is("airtable_id", null)
+            .in("name", names);
+
+        if (error) {
+            throw new Error(
+                `DB Error (fetchMissingReferencesByNames:${table}): ${error.message}`,
+            );
+        }
+        return (data ?? []) as ReferenceRecord[];
+    }
+
+    async saveAirtableId(
+        table: ReferenceTableName,
+        recordId: string,
+        airtableId: string,
+    ): Promise<void> {
+        const { error } = await this.client
+            .from(table)
+            .update({ airtable_id: airtableId })
+            .eq("id", recordId);
+
+        if (error) {
+            throw new Error(
+                `DB Error (saveAirtableId:${table}): ${error.message}`,
+            );
+        }
+    }
+
+    // Nullifies a dead Airtable ID across all reference tables
     async removeAirtableId(airtableId: string): Promise<void> {
         const tables = [
             SupabaseTables.CLOCKIFY_USERS,

@@ -14,3 +14,10 @@ export const SupabaseViews = {
 export const SentinelRecords = {
     NO_PROJECT_CLOCKIFY_ID: "NO-PROJECT",
 } as const;
+
+export type SupabaseViewName = typeof SupabaseViews[keyof typeof SupabaseViews];
+
+export type ReferenceTableName =
+    | typeof SupabaseTables.CLOCKIFY_USERS
+    | typeof SupabaseTables.CLOCKIFY_PROJECTS
+    | typeof SupabaseTables.CLOCKIFY_CLIENTS;

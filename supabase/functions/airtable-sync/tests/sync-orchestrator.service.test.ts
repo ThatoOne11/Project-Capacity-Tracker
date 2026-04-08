@@ -7,23 +7,27 @@ import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 import { AirtableUpdate } from "../types/airtable.types.ts";
 import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
-
-type OrchestratorArgs = ConstructorParameters<typeof SyncOrchestratorService>;
-
-// Minimal mock implementations
-const mockSupabase = {
-  from: () => ({ select: () => Promise.resolve({ data: [], error: null }) }),
-} as unknown as OrchestratorArgs[0];
+import { AggregateRepository } from "../repo/aggregate.repo.ts";
+import { SlackService } from "../../_shared/services/slack.service.ts";
+import { ReferenceSyncService } from "../services/reference-sync.service.ts";
+import { AirtableService } from "../services/airtable.service.ts";
 
 const mockSlack = {
   sendInfo: () => Promise.resolve(),
-} as unknown as OrchestratorArgs[1];
+} as unknown as SlackService;
+
+const mockAggregateRepo = {
+  fetchActiveNamesFromViews: () =>
+    Promise.resolve({ activeUsers: [], activeProjects: [] }),
+  fetchAggregateView: () => Promise.resolve([]),
+} as unknown as AggregateRepository;
 
 const mockReferenceSync = {
-  syncAllReferences: () => Promise.resolve(),
+  syncAllReferences: (_activeUsers: string[], _activeProjects: string[]) =>
+    Promise.resolve(),
   getOrBuildProjectAssignments: () =>
     Promise.resolve(new Map<string, string>()),
-} as unknown as OrchestratorArgs[3];
+} as unknown as ReferenceSyncService;
 
 const mockRefRepo = {} as unknown as ReferenceRepository;
 
@@ -56,34 +60,32 @@ Deno.test("SyncOrchestratorService - Execution & Ghost Buster Suite", async (t) 
           return Promise.resolve();
         },
         createRecords: () => Promise.resolve(),
-      } as unknown as OrchestratorArgs[2];
+      } as unknown as AirtableService;
 
       const orchestrator = new SyncOrchestratorService(
-        mockSupabase,
         mockSlack,
         mockAirtable,
         mockReferenceSync,
         mockRefRepo,
+        mockAggregateRepo,
       );
 
       await orchestrator.runAllJobs();
 
       assertEquals(capturedUpdates.length, 2);
-      const duplicateRecord = capturedUpdates.find((u) =>
-        u.id === "recDuplicate1"
-      );
-      assertEquals(duplicateRecord?.fields[AIRTABLE_FIELDS.ACTUAL_HOURS], 10);
+      const deduped = capturedUpdates.find((u) => u.id === "recDuplicate1");
+      // Last-write-wins: the second update (value: 10) should survive.
+      assertEquals(deduped?.fields[AIRTABLE_FIELDS.ACTUAL_HOURS], 10);
 
       AirtableDiffCalculator.calculateDiffs = originalCalculateDiffs;
     },
   );
 
   await t.step(
-    "2. Ghost Buster - Catches ROW_DOES_NOT_EXIST, delegates to Repo, and gracefully exits",
+    "2. Ghost Buster catches ROW_DOES_NOT_EXIST, nullifies the ID, and exits gracefully",
     async () => {
       let nullifiedId = "";
 
-      // 1. Mock the Repository (No raw DB mocking needed!)
       const mockRefRepoGhost = {
         removeAirtableId: (id: string) => {
           nullifiedId = id;
@@ -91,62 +93,54 @@ Deno.test("SyncOrchestratorService - Execution & Ghost Buster Suite", async (t) 
         },
       } as unknown as ReferenceRepository;
 
-      // Mock Reference Sync to THROW a dictionary-approved error
       const mockFailingReferenceSync = {
-        syncAllReferences: () =>
+        syncAllReferences: (_au: string[], _ap: string[]) =>
           Promise.reject(
             new Error(
-              `Failed to process: {"error":{"type":"ROW_DOES_NOT_EXIST","message":"Record ID recDeadGhost12345 does not exist"}}`,
+              `Failed: {"error":{"type":"ROW_DOES_NOT_EXIST","message":"Record ID recDeadGhost12345 does not exist"}}`,
             ),
           ),
         getOrBuildProjectAssignments: () =>
           Promise.resolve(new Map<string, string>()),
-      } as unknown as OrchestratorArgs[3];
-
-      const mockAirtable = {} as unknown as OrchestratorArgs[2];
+      } as unknown as ReferenceSyncService;
 
       const orchestrator = new SyncOrchestratorService(
-        mockSupabase,
         mockSlack,
-        mockAirtable,
+        {} as unknown as AirtableService,
         mockFailingReferenceSync,
         mockRefRepoGhost,
+        mockAggregateRepo,
       );
 
       const result = await orchestrator.runAllJobs();
 
-      // ASSERTIONS: Should exit gracefully, extract the exact ID, and pass it to the Repo
       assertEquals(result.details[0].includes("Sync aborted early"), true);
       assertEquals(nullifiedId, "recDeadGhost12345");
     },
   );
 
   await t.step(
-    "3. Ghost Buster - IGNORES unrelated errors and safely throws them",
+    "3. Ghost Buster ignores unrelated errors and re-throws them",
     async () => {
-      // Mock Reference Sync to THROW an error NOT in our dictionary
       const mockFailingReferenceSync = {
-        syncAllReferences: () =>
+        syncAllReferences: (_au: string[], _ap: string[]) =>
           Promise.reject(
             new Error(
-              `Failed to process: {"error":{"type":"INVALID_PERMISSIONS","message":"Cannot modify recSafeRecord1234"}}`,
+              `Failed: {"error":{"type":"INVALID_PERMISSIONS","message":"Cannot modify recSafeRecord1234"}}`,
             ),
           ),
         getOrBuildProjectAssignments: () =>
           Promise.resolve(new Map<string, string>()),
-      } as unknown as OrchestratorArgs[3];
-
-      const mockAirtable = {} as unknown as OrchestratorArgs[2];
+      } as unknown as ReferenceSyncService;
 
       const orchestrator = new SyncOrchestratorService(
-        mockSupabase,
         mockSlack,
-        mockAirtable,
+        {} as unknown as AirtableService,
         mockFailingReferenceSync,
         mockRefRepo,
+        mockAggregateRepo,
       );
 
-      // ASSERTIONS: The orchestrator MUST throw the error, not swallow it!
       await assertRejects(
         () => orchestrator.runAllJobs(),
         Error,

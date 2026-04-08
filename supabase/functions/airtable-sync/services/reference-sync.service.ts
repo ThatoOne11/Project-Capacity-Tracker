@@ -1,34 +1,35 @@
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { AirtableService } from "./airtable.service.ts";
+import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
-import { AggregateRow, ReferenceRecord, ViewRow } from "../types/sync.types.ts";
+import { AggregateRow } from "../types/sync.types.ts";
+import { ReferenceRecord } from "../../_shared/types/sync.types.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 import { SyncStrategies } from "../constants/sync.consts.ts";
 import {
+  ReferenceTableName,
   SupabaseTables,
-  SupabaseViews,
 } from "../../_shared/constants/supabase.constants.ts";
 import { AirtableRecord } from "../types/airtable.types.ts";
 import { formatMonthToIsoDate } from "../../_shared/utils/date.utils.ts";
 import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
 import { SlackService } from "../../_shared/services/slack.service.ts";
 
-// Ensures all relational dependencies (Users, Clients, Projects) exist in Airtable
-// before attempting to sync numerical time entries.
 export class ReferenceSyncService {
   constructor(
-    private readonly supabase: SupabaseClient,
+    private readonly refRepo: ReferenceRepository,
     private readonly airtable: AirtableService,
     private readonly slack: SlackService,
   ) {}
 
-  async syncAllReferences(): Promise<void> {
+  // Ensures all relational dependencies (Users, Clients, Projects) exist in
+  // Airtable before the numerical sync runs.
+  async syncAllReferences(
+    activeUsers: string[],
+    activeProjects: string[],
+  ): Promise<void> {
     console.log(
       "[ReferenceSync] Verifying foundational records in Airtable...",
     );
-
-    const { activeUsers, activeProjects } = await this
-      .getActiveNamesFromViews();
 
     if (activeUsers.length > 0) {
       await this.syncTable(
@@ -44,56 +45,19 @@ export class ReferenceSyncService {
     }
   }
 
-  private async getActiveNamesFromViews(): Promise<
-    { activeUsers: string[]; activeProjects: string[] }
-  > {
-    const users = new Set<string>();
-    const projects = new Set<string>();
-
-    const [monthly, payroll] = await Promise.all([
-      this.supabase.from(SupabaseViews.MONTHLY_AGGREGATES).select(
-        "user_name, project_name",
-      ),
-      this.supabase.from(SupabaseViews.PAYROLL_AGGREGATES).select(
-        "user_name, project_name",
-      ),
-    ]);
-
-    const processRows = (rows: ViewRow[] | null) => {
-      if (!rows) return;
-      for (const row of rows) {
-        if (row.user_name) users.add(row.user_name);
-        if (row.project_name) {
-          projects.add(row.project_name);
-        }
-      }
-    };
-
-    processRows(monthly.data as ViewRow[] | null);
-    processRows(payroll.data as ViewRow[] | null);
-
-    return {
-      activeUsers: Array.from(users),
-      activeProjects: Array.from(projects),
-    };
-  }
-
   private async syncProjectsAndClients(
     activeProjectNames: string[],
   ): Promise<void> {
-    const { data: projects, error } = await this.supabase
-      .from(SupabaseTables.CLOCKIFY_PROJECTS)
-      .select("id, name, client_id, airtable_id")
-      .in("name", activeProjectNames);
-
-    if (error || !projects) return;
-
+    const projects = await this.refRepo.fetchProjectsByNames(
+      activeProjectNames,
+    );
     const missingProjects = projects.filter((p) => !p.airtable_id);
+
     const activeClientIds = Array.from(
       new Set(
-        projects.map((p) => p.client_id).filter((id): id is string =>
-          Boolean(id)
-        ),
+        projects
+          .map((p) => p.client_id)
+          .filter((id): id is string => Boolean(id)),
       ),
     );
 
@@ -105,13 +69,10 @@ export class ReferenceSyncService {
     );
 
     if (activeClientIds.length > 0) {
-      const { data: missingClients } = await this.supabase
-        .from(SupabaseTables.CLOCKIFY_CLIENTS)
-        .select("id, name")
-        .is("airtable_id", null)
-        .in("id", activeClientIds);
-
-      if (missingClients && missingClients.length > 0) {
+      const missingClients = await this.refRepo.fetchMissingClientsByIds(
+        activeClientIds,
+      );
+      if (missingClients.length > 0) {
         await this.createMissingRecords(
           SupabaseTables.CLOCKIFY_CLIENTS,
           AIRTABLE_CONFIG.clientsTableId,
@@ -123,18 +84,17 @@ export class ReferenceSyncService {
   }
 
   private async syncTable(
-    supabaseTable: string,
+    supabaseTable: ReferenceTableName,
     airtableTableId: string,
     airtableNameField: string,
     activeNames: string[],
   ): Promise<void> {
-    const { data: missingRecords, error } = await this.supabase
-      .from(supabaseTable)
-      .select("id, name")
-      .is("airtable_id", null)
-      .in("name", activeNames);
+    const missingRecords = await this.refRepo.fetchMissingReferencesByNames(
+      supabaseTable,
+      activeNames,
+    );
 
-    if (error || !missingRecords || missingRecords.length === 0) return;
+    if (missingRecords.length === 0) return;
 
     await this.createMissingRecords(
       supabaseTable,
@@ -150,7 +110,7 @@ export class ReferenceSyncService {
   }
 
   private async createMissingRecords(
-    supabaseTable: string,
+    supabaseTable: ReferenceTableName,
     airtableTableId: string,
     airtableNameField: string,
     records: ReferenceRecord[],
@@ -158,7 +118,7 @@ export class ReferenceSyncService {
     if (records.length === 0) return;
 
     console.log(
-      `[ReferenceSync] Resolving ${records.length} records in ${supabaseTable}...`,
+      `[ReferenceSync] Resolving ${records.length} record(s) in ${supabaseTable}...`,
     );
 
     // 1. Fetch all existing records from Airtable to build the Normalized Map
@@ -169,26 +129,21 @@ export class ReferenceSyncService {
       );
 
     const normalizedMap = new Map<string, string>();
-    const conflictedNames = new Set<string>(); // Tracks non-deterministic duplicates
+    const conflictedNames = new Set<string>();
 
     for (const rec of existingAirtableRecords) {
       const normalized = this.normalizeName(rec.name);
 
-      if (conflictedNames.has(normalized)) {
-        continue; // Already known to be conflicted, skip
-      }
+      if (conflictedNames.has(normalized)) continue;
 
       if (normalizedMap.has(normalized)) {
-        // Collision detected! Remove from valid map and flag it
         normalizedMap.delete(normalized);
         conflictedNames.add(normalized);
       } else {
-        // First time seeing this name, add to map safely
         normalizedMap.set(normalized, rec.id);
       }
     }
 
-    // Process up to 5 records concurrently
     const CONCURRENCY_LIMIT = 5;
 
     for (let i = 0; i < records.length; i += CONCURRENCY_LIMIT) {
@@ -199,14 +154,14 @@ export class ReferenceSyncService {
           try {
             const normalizedSupabaseName = this.normalizeName(record.name);
 
-            // DEFENSIVE SHIELD: Refuse to process if duplicates exist in Airtable
+            // Refuse to process if duplicates exist in Airtable
             if (conflictedNames.has(normalizedSupabaseName)) {
               const msg =
                 `Multiple records found in Airtable for *${record.name}*. Cannot safely auto-heal or sync. Please delete the duplicates in Airtable.`;
               console.warn(`[ReferenceSync] ${msg}`);
 
-              // We use sendAlert instead of sendInfo because human intervention is required
               await this.slack.sendAlert("Airtable Data Conflict", msg);
+
               return; // Skip processing this specific record
             }
 
@@ -222,26 +177,20 @@ export class ReferenceSyncService {
               // Send Slack alert
               await this.slack.sendInfo("Airtable Auto-Heal Applied", msg);
             } else {
-              // CREATE: Truly missing, insert into Airtable
-              const fields: Record<string, unknown> = {
-                [airtableNameField]: record.name,
-              };
               targetAirtableId = await this.airtable.createReferenceRecord(
                 airtableTableId,
-                fields,
+                { [airtableNameField]: record.name },
               );
               console.log(
                 `[ReferenceSync] Created & Linked: ${record.name} (${targetAirtableId})`,
               );
             }
 
-            // 3. Save the confirmed ID back to Supabase
-            const { error: updateErr } = await this.supabase
-              .from(supabaseTable)
-              .update({ airtable_id: targetAirtableId })
-              .eq("id", record.id);
-
-            if (updateErr) throw new Error(updateErr.message);
+            await this.refRepo.saveAirtableId(
+              supabaseTable,
+              record.id,
+              targetAirtableId,
+            );
           } catch (err: unknown) {
             const errorMessage = (err as Error).message;
             console.error(
@@ -284,6 +233,7 @@ export class ReferenceSyncService {
 
   private buildAssignmentMap(records: AirtableRecord[]): Map<string, string> {
     const map = new Map<string, string>();
+
     for (const rec of records) {
       const projects = rec.fields[AIRTABLE_FIELDS.PROJECT] as
         | string[]
@@ -294,6 +244,7 @@ export class ReferenceSyncService {
         map.set(`${projects[0]}_${month}`, rec.id);
       }
     }
+
     return map;
   }
 
@@ -306,18 +257,15 @@ export class ReferenceSyncService {
     for (const row of sourceRows) {
       if (!row.airtable_project_id) continue;
 
-      const isoDate = formatMonthToIsoDate(row.month);
-
       const safeProjectId = row.airtable_project_id.trim();
+      const isoDate = formatMonthToIsoDate(row.month);
       const key = `${safeProjectId}_${isoDate}`;
 
       if (!existingMap.has(key) && !missing.has(key)) {
-        missing.set(key, {
-          projectId: safeProjectId,
-          isoDate: isoDate,
-        });
+        missing.set(key, { projectId: safeProjectId, isoDate });
       }
     }
+
     return missing;
   }
 
@@ -327,7 +275,7 @@ export class ReferenceSyncService {
     idMap: Map<string, string>,
   ): Promise<void> {
     console.log(
-      `[ReferenceSync] Auto-generating ${missing.size} missing Project Assignments...`,
+      `[ReferenceSync] Auto-generating ${missing.size} missing Project Assignment(s)...`,
     );
 
     const missingEntries = Array.from(missing.entries());
@@ -349,10 +297,6 @@ export class ReferenceSyncService {
             idMap.set(key, newId);
           } catch (err: unknown) {
             const errorMessage = (err as Error).message;
-            console.error(
-              `[ReferenceSync] Failed to create Project Assignment ${key}:`,
-              errorMessage,
-            );
             throw new DownstreamSyncError(
               `Failed to create Project Assignment ${key} in Airtable: ${errorMessage}`,
             );

@@ -1,27 +1,27 @@
 type SupabaseConfig = {
-    readonly url: string;
-    readonly key: string;
-    readonly syncApiSecret: string;
+    url: string;
+    key: string;
+    syncApiSecret: string;
 };
 
 type ClockifyConfig = {
-    readonly apiKey: string;
-    readonly workspaceId: string;
+    apiKey: string;
+    workspaceId: string;
 };
 
 type AirtableConfig = {
-    readonly pat: string;
-    readonly baseId: string;
-    readonly employeesTableId: string;
-    readonly projectsTableId: string;
-    readonly clientsTableId: string;
-    readonly projectAssignmentsTableId: string;
-    readonly peopleAssignmentsTableId: string;
-    readonly payrollTableId: string;
+    pat: string;
+    baseId: string;
+    employeesTableId: string;
+    projectsTableId: string;
+    clientsTableId: string;
+    projectAssignmentsTableId: string;
+    peopleAssignmentsTableId: string;
+    payrollTableId: string;
 };
 
 type SlackConfig = {
-    readonly webhookUrl: string;
+    webhookUrl: string;
 };
 
 export const SUPABASE_CONFIG: SupabaseConfig = {

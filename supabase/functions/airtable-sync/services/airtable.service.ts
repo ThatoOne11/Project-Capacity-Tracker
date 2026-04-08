@@ -6,10 +6,11 @@ import {
   AirtableInsert,
   AirtableRecord,
   AirtableResponseSchema,
+  AirtableUpdate,
 } from "../types/airtable.types.ts";
 
 export class AirtableService {
-  private readonly baseUrl = ApiConstants.AIRTABLE_BASE_URL;
+  private readonly baseUrl: string = ApiConstants.AIRTABLE_BASE_URL;
   private readonly headers: HeadersInit;
 
   constructor(private readonly pat: string, private readonly baseId: string) {
@@ -47,17 +48,14 @@ export class AirtableService {
 
       if (offset) params.append("offset", offset);
 
-      const url =
-        `${this.baseUrl}/${this.baseId}/${tableId}?${params.toString()}`;
+      const url = `${this.baseUrl}/${this.baseId}/${tableId}?${params}`;
       const res = await fetchWithBackoff(url, { headers: this.headers });
 
       if (!res.ok) {
         throw new Error(`[AirtableService] Fetch Failed: ${await res.text()}`);
       }
 
-      const rawData = await res.json();
-      const data = AirtableResponseSchema.parse(rawData);
-
+      const data = AirtableResponseSchema.parse(await res.json());
       if (data.records) allRecords.push(...data.records);
       offset = data.offset;
     } while (offset);
@@ -71,7 +69,7 @@ export class AirtableService {
   //Updates records in batches of 10 to comply with Airtable's API limits.
   async updateRecords(
     tableId: string,
-    updates: { id: string; fields: Record<string, unknown> }[],
+    updates: AirtableUpdate[],
   ): Promise<void> {
     if (updates.length === 0) return;
 
@@ -142,7 +140,7 @@ export class AirtableService {
       );
     }
 
-    const data = await res.json();
+    const data = await res.json() as { records: Array<{ id: string }> };
     return data.records[0].id;
   }
 
@@ -151,17 +149,16 @@ export class AirtableService {
   async fetchAllReferenceRecords(
     tableId: string,
     nameField: string,
-  ): Promise<{ id: string; name: string }[]> {
-    const allRecords: { id: string; name: string }[] = [];
+  ): Promise<Array<{ id: string; name: string }>> {
+    const allRecords: Array<{ id: string; name: string }> = [];
     let offset: string | undefined = undefined;
 
     do {
       const params = new URLSearchParams();
-      params.append("fields[]", nameField); // Only fetch the Name to save RAM/Bandwidth
+      params.append("fields[]", nameField);
       if (offset) params.append("offset", offset);
 
-      const url =
-        `${this.baseUrl}/${this.baseId}/${tableId}?${params.toString()}`;
+      const url = `${this.baseUrl}/${this.baseId}/${tableId}?${params}`;
       const res = await fetchWithBackoff(url, { headers: this.headers });
 
       if (!res.ok) {
@@ -171,8 +168,12 @@ export class AirtableService {
         );
       }
 
-      const data = await res.json();
-      for (const record of data.records || []) {
+      const data = await res.json() as {
+        records?: Array<{ id: string; fields: Record<string, unknown> }>;
+        offset?: string;
+      };
+
+      for (const record of data.records ?? []) {
         const nameValue = record.fields[nameField];
         if (typeof nameValue === "string") {
           allRecords.push({ id: record.id, name: nameValue });

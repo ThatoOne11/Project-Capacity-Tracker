@@ -4,11 +4,12 @@ import { AggregateRow } from "../types/sync.types.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 import { SyncStrategies } from "../constants/sync.consts.ts";
 import { AirtableRecord, SyncJob } from "../types/airtable.types.ts";
+import { SupabaseViews } from "../../_shared/constants/supabase.constants.ts";
 
 Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
   const job: SyncJob = {
     name: "Payroll Test",
-    sourceView: "payroll_view",
+    sourceView: SupabaseViews.PAYROLL_AGGREGATES,
     destinationTableId: "tbl123",
     allowInserts: true,
     strategy: SyncStrategies.PAYROLL,
@@ -78,7 +79,7 @@ Deno.test("AirtableDiffCalculator - Payroll Strategy", async (t) => {
 Deno.test("AirtableDiffCalculator - Assignment Strategy (Shields & Auto-Healing)", async (t) => {
   const job: SyncJob = {
     name: "Assignment Test",
-    sourceView: "assignment_view",
+    sourceView: SupabaseViews.MONTHLY_AGGREGATES,
     destinationTableId: "tbl456",
     allowInserts: true,
     strategy: SyncStrategies.ASSIGNMENT,

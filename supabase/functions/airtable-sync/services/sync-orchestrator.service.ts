@@ -1,23 +1,27 @@
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SlackService } from "../../_shared/services/slack.service.ts";
 import { AirtableService } from "./airtable.service.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
 import { ReferenceSyncService } from "./reference-sync.service.ts";
+import { AggregateRepository } from "../repo/aggregate.repo.ts";
+import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
 import { AggregateRow } from "../types/sync.types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
 import { SyncStrategies } from "../constants/sync.consts.ts";
 import { SupabaseViews } from "../../_shared/constants/supabase.constants.ts";
 import { AirtableUpdate, SyncJob, SyncStats } from "../types/airtable.types.ts";
-import { GHOST_ERROR_TYPES } from "../constants/airtable.constants.ts";
-import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
+import {
+  AIRTABLE_RECORD_ID_PATTERN,
+  GHOST_ERROR_TYPES,
+} from "../constants/airtable.constants.ts";
+import { toSafeError } from "../../_shared/utils/error.utils.ts";
 
 export class SyncOrchestratorService {
   constructor(
-    private readonly supabase: SupabaseClient,
     private readonly slack: SlackService,
     private readonly airtable: AirtableService,
     private readonly referenceSync: ReferenceSyncService,
     private readonly refRepo: ReferenceRepository,
+    private readonly aggregateRepo: AggregateRepository,
   ) {}
 
   async runAllJobs(): Promise<{ stats: SyncStats; details: string[] }> {
@@ -47,28 +51,30 @@ export class SyncOrchestratorService {
     ];
 
     try {
-      // Foundation logic: Establish all IDs prior to numerical sync
-      await this.referenceSync.syncAllReferences();
+      // Fetch active names once and pass to reference sync
+      const { activeUsers, activeProjects } = await this.aggregateRepo
+        .fetchActiveNamesFromViews();
+      await this.referenceSync.syncAllReferences(activeUsers, activeProjects);
 
       for (const job of jobs) {
         console.log(`\n[SyncOrchestrator] Starting Job: ${job.name}`);
-        await this.executeJob(job, totalStats, logMessages);
+        const sourceData = await this.aggregateRepo.fetchAggregateView(
+          job.sourceView,
+        );
+        await this.executeJob(job, sourceData, totalStats, logMessages);
         console.log(`[SyncOrchestrator] Finished Job: ${job.name}`);
       }
     } catch (err: unknown) {
-      const error = err as Error;
-
-      // 1. Check if the error message contains any of the known ghost types from constants
+      const error = toSafeError(err);
       const isGhostError = GHOST_ERROR_TYPES.some((type) =>
         error.message.includes(type)
       );
 
       if (isGhostError) {
-        // Extract the exact 17-character Airtable ID using Regex
-        const match = error.message.match(/(rec[a-zA-Z0-9]{14})/);
+        const match = error.message.match(AIRTABLE_RECORD_ID_PATTERN);
+        const badId = match?.[0];
 
-        if (match && match[1]) {
-          const badId = match[1];
+        if (badId) {
           console.warn(
             `[GhostBuster] Detected deleted Airtable ID: ${badId}. Nullifying in Supabase...`,
           );
@@ -84,12 +90,12 @@ export class SyncOrchestratorService {
             `[GhostBuster] Sync aborted early to heal deleted record ${badId}.`,
           );
 
-          // Return gracefully! Do NOT throw a 500 error. The next cron run will fix it naturally.
+          // Return gracefully - the next cron run will fix it naturally.
           return { stats: totalStats, details: logMessages };
         }
       }
 
-      // If it's a different kind of error, rethrow it to trigger the critical Slack alert
+      // If it's a different kind of error, rethrow it to trigger the Slack alert
       throw error;
     }
 
@@ -98,25 +104,16 @@ export class SyncOrchestratorService {
 
   private async executeJob(
     job: SyncJob,
+    sourceData: AggregateRow[],
     totalStats: SyncStats,
     logMessages: string[],
   ): Promise<void> {
-    const { data: sourceData, error: dbError } = await this.supabase.from(
-      job.sourceView,
-    ).select("*");
-
-    if (dbError) {
-      throw new Error(
-        `[SyncOrchestrator] Supabase Error (${job.sourceView}): ${dbError.message}`,
-      );
-    }
-
     let projectAssignmentMap = new Map<string, string>();
 
     if (job.strategy === SyncStrategies.ASSIGNMENT && job.allowInserts) {
       projectAssignmentMap = await this.referenceSync
         .getOrBuildProjectAssignments(
-          sourceData as AggregateRow[],
+          sourceData,
         );
     }
 
@@ -126,7 +123,7 @@ export class SyncOrchestratorService {
     );
 
     const { updates, inserts, stats } = AirtableDiffCalculator.calculateDiffs(
-      sourceData as AggregateRow[],
+      sourceData,
       destinationRecords,
       job,
       projectAssignmentMap,
@@ -143,7 +140,6 @@ export class SyncOrchestratorService {
     if (inserts.length > 0) {
       await this.airtable.createRecords(job.destinationTableId, inserts);
     }
-
     if (cleanUpdates.length > 0) {
       await this.airtable.updateRecords(job.destinationTableId, cleanUpdates);
     }

@@ -1,5 +1,6 @@
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 import { SyncStrategies } from "../constants/sync.consts.ts";
+import { SyncStrategy } from "../constants/sync.consts.ts";
 import {
   AirtableInsert,
   AirtableRecord,
@@ -48,12 +49,10 @@ export class AirtableDiffCalculator {
     };
   }
 
-  private static getStrategy(strategyType: string): AirtableSyncStrategy {
-    if (strategyType === SyncStrategies.PAYROLL) return new PayrollStrategy();
-    if (strategyType === SyncStrategies.ASSIGNMENT) {
-      return new AssignmentStrategy();
-    }
-    throw new Error(`[DiffCalculator] Unknown sync strategy: ${strategyType}`);
+  private static getStrategy(strategy: SyncStrategy): AirtableSyncStrategy {
+    if (strategy === SyncStrategies.PAYROLL) return new PayrollStrategy();
+    if (strategy === SyncStrategies.ASSIGNMENT) return new AssignmentStrategy();
+    throw new Error(`[DiffCalculator] Unknown sync strategy: ${strategy}`);
   }
 
   private static buildAirtableMap(
