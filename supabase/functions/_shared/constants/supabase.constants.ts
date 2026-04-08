@@ -9,3 +9,8 @@ export const SupabaseViews = {
     MONTHLY_AGGREGATES: "monthly_aggregates_view",
     PAYROLL_AGGREGATES: "payroll_aggregates_view",
 } as const;
+
+// Airtable linkable target for time entries logged with no project selected.
+export const SentinelRecords = {
+    NO_PROJECT_CLOCKIFY_ID: "NO-PROJECT",
+} as const;

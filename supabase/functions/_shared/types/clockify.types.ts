@@ -1,5 +1,6 @@
 import { z } from "npm:zod";
 
+// Input schemas
 export const ClockifyUserSchema = z
     .object({
         id: z.string(),
@@ -9,23 +10,18 @@ export const ClockifyUserSchema = z
     })
     .transform((user) => ({
         ...user,
-        name: user.name || user.email || "Unknown User",
+        // Coerce to a guaranteed non-null display name at the parse boundary.
+        name: user.name ?? user.email ?? "Unknown User",
     }));
 
 export const ClockifyClientSchema = z.object({
     id: z.string(),
-    name: z
-        .string()
-        .nullish()
-        .transform((val) => val || "Unknown Client"),
+    name: z.string().nullish().transform((val) => val ?? "Unknown Client"),
 });
 
 export const ClockifyProjectSchema = z.object({
     id: z.string(),
-    name: z
-        .string()
-        .nullish()
-        .transform((val) => val || "Unknown Project"),
+    name: z.string().nullish().transform((val) => val ?? "Unknown Project"),
     clientId: z.string().nullable().optional(),
 });
 
@@ -43,8 +39,8 @@ export const ClockifyTimeEntrySchema = z.object({
     timeInterval: ClockifyTimeIntervalSchema,
 });
 
-export type ClockifyUser = z.infer<typeof ClockifyUserSchema>;
-export type ClockifyClient = z.infer<typeof ClockifyClientSchema>;
-export type ClockifyProject = z.infer<typeof ClockifyProjectSchema>;
-export type ClockifyTimeInterval = z.infer<typeof ClockifyTimeIntervalSchema>;
-export type ClockifyTimeEntry = z.infer<typeof ClockifyTimeEntrySchema>;
+export type ClockifyUser = z.output<typeof ClockifyUserSchema>;
+export type ClockifyClient = z.output<typeof ClockifyClientSchema>;
+export type ClockifyProject = z.output<typeof ClockifyProjectSchema>;
+export type ClockifyTimeInterval = z.output<typeof ClockifyTimeIntervalSchema>;
+export type ClockifyTimeEntry = z.output<typeof ClockifyTimeEntrySchema>;

@@ -3,6 +3,7 @@ import { z } from "npm:zod";
 export const SyncRequestSchema = z.object({
     lookbackDays: z.number().int().positive().optional(),
 });
+
 export type SyncRequestBody = z.infer<typeof SyncRequestSchema>;
 
 export type SyncResult = {
@@ -30,5 +31,5 @@ export type TimeEntryRow = {
     duration: string | null;
     user_id: string;
     project_id: string | null;
-    deleted_at?: string | null;
+    deleted_at: string | null;
 };
