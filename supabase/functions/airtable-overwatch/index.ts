@@ -11,5 +11,5 @@ Deno.serve(withEdgeWrapper("Airtable-Overwatch", async (req, _slack) => {
 
   const controller = new OverwatchController(overwatchService);
 
-  return await controller.handleRequest(req);
+  return controller.handleRequest(req);
 }));
