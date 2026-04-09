@@ -156,6 +156,24 @@ export class ReferenceRepository {
         return (data ?? []) as DbUser[];
     }
 
+    // Fetches all users, or a single user if a specific clockify_id is provided.
+    async fetchUsersByClockifyId(clockifyId?: string): Promise<DbUser[]> {
+        const query = this.client
+            .from(SupabaseTables.CLOCKIFY_USERS)
+            .select("id, clockify_id, name");
+
+        const { data, error } = clockifyId
+            ? await query.eq("clockify_id", clockifyId)
+            : await query;
+
+        if (error) {
+            throw new Error(
+                `DB Error (fetchUsersByClockifyId): ${error.message}`,
+            );
+        }
+        return (data ?? []) as DbUser[];
+    }
+
     async fetchProjectsByNames(names: string[]): Promise<ProjectRow[]> {
         const { data, error } = await this.client
             .from(SupabaseTables.CLOCKIFY_PROJECTS)
