@@ -1,6 +1,5 @@
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
-import { SyncStrategies } from "../constants/sync.consts.ts";
-import { SyncStrategy } from "../constants/sync.consts.ts";
+import { SyncStrategies, SyncStrategy } from "../constants/sync.consts.ts";
 import {
   AirtableInsert,
   AirtableRecord,
