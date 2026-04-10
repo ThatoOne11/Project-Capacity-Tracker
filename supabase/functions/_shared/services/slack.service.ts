@@ -94,8 +94,10 @@ export class SlackService {
         const newUsersStr = formatList(stats.newUsers);
         const renamedStr = formatList(stats.renamedUsers);
         const newProjectsStr = formatList(stats.newProjects);
+        const newClientsStr = formatList(stats.newClients);
 
-        const hasChanges = newUsersStr || renamedStr || newProjectsStr;
+        const hasChanges = newUsersStr || renamedStr || newProjectsStr ||
+            newClientsStr;
         let changesText = "*Changes:*\n";
 
         if (hasChanges) {
@@ -103,6 +105,9 @@ export class SlackService {
             if (renamedStr) changesText += `- Renamed Users: ${renamedStr}\n`;
             if (newProjectsStr) {
                 changesText += `- New Projects: ${newProjectsStr}\n`;
+            }
+            if (newClientsStr) {
+                changesText += `- New Clients: ${newClientsStr}\n`;
             }
         } else {
             changesText += "_No changes detected._";
