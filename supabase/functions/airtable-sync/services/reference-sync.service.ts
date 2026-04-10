@@ -146,6 +146,8 @@ export class ReferenceSyncService {
 
     const CONCURRENCY_LIMIT = 5;
 
+    const healedRecords: string[] = [];
+
     for (let i = 0; i < records.length; i += CONCURRENCY_LIMIT) {
       const chunk = records.slice(i, i + CONCURRENCY_LIMIT);
 
@@ -169,13 +171,10 @@ export class ReferenceSyncService {
             let targetAirtableId = normalizedMap.get(normalizedSupabaseName);
 
             if (targetAirtableId) {
-              // AUTO-HEAL: Match found!
-              const msg =
-                `Auto-healed link for existing record: *${record.name}* (${targetAirtableId})`;
-              console.log(`[ReferenceSync] ${msg}`);
-
-              // Send Slack alert
-              await this.slack.sendInfo("Airtable Auto-Heal Applied", msg);
+              healedRecords.push(`- *${record.name}* → ${targetAirtableId}`);
+              console.log(
+                `[ReferenceSync] Auto-healed: ${record.name} (${targetAirtableId})`,
+              );
             } else {
               targetAirtableId = await this.airtable.createReferenceRecord(
                 airtableTableId,
@@ -203,6 +202,11 @@ export class ReferenceSyncService {
           }
         }),
       );
+    }
+
+    // Send one consolidated Slack message for all healed records in this table.
+    if (healedRecords.length > 0) {
+      await this.slack.sendAutoHealReport(supabaseTable, healedRecords);
     }
   }
 

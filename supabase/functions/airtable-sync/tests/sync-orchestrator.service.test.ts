@@ -13,7 +13,7 @@ import { ReferenceSyncService } from "../services/reference-sync.service.ts";
 import { AirtableService } from "../services/airtable.service.ts";
 
 const mockSlack = {
-  sendInfo: () => Promise.resolve(),
+  sendGhostBusterReport: () => Promise.resolve(),
 } as unknown as SlackService;
 
 const mockAggregateRepo = {

@@ -81,11 +81,7 @@ export class SyncOrchestratorService {
 
           await this.refRepo.removeAirtableId(badId);
 
-          await this.slack.sendInfo(
-            "Ghost Record Caught",
-            `Airtable record *${badId}* was manually deleted or corrupted. The system has cleared the internal cache and will auto-heal the link on the next sync.`,
-          );
-
+          await this.slack.sendGhostBusterReport(badId);
           logMessages.push(
             `[GhostBuster] Sync aborted early to heal deleted record ${badId}.`,
           );

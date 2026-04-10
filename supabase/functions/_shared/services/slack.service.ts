@@ -2,63 +2,89 @@ import { SlackClient } from "../clients/slack.client.ts";
 import { SlackPayload } from "../types/slack.types.ts";
 import { SyncReportStats } from "../types/sync.types.ts";
 
+type SlackMessageConfig = {
+    title: string;
+    contextBar: string;
+    bodySections: string[];
+    footer: string;
+};
+
 export class SlackService {
     private readonly client: SlackClient = new SlackClient();
 
-    async sendAlert(functionName: string, errorMsg: string): Promise<void> {
-        const payload: SlackPayload = {
-            text: "🚨 Project Capacity Tracker - Sync Failed",
+    private buildPayload(config: SlackMessageConfig): SlackPayload {
+        return {
+            text: config.title,
             blocks: [
                 {
                     type: "header",
                     text: {
                         type: "plain_text",
-                        text: "🚨 Project Capacity Tracker - Sync Failed",
+                        text: config.title,
                         emoji: true,
                     },
                 },
                 {
-                    type: "section",
-                    fields: [
-                        {
-                            type: "mrkdwn",
-                            text: `*Function:*\n${functionName}`,
-                        },
-                        {
-                            type: "mrkdwn",
-                            text: `*Time:*\n${new Date().toISOString()}`,
-                        },
-                    ],
+                    type: "context",
+                    elements: [{ type: "mrkdwn", text: config.contextBar }],
                 },
+                { type: "divider" },
+                ...config.bodySections.map((text) => ({
+                    type: "section" as const,
+                    text: { type: "mrkdwn" as const, text },
+                })),
                 {
-                    type: "section",
-                    text: {
-                        type: "mrkdwn",
-                        text: `*Error Details:*\n\`\`\`${errorMsg}\`\`\``,
-                    },
+                    type: "context",
+                    elements: [{ type: "mrkdwn", text: config.footer }],
                 },
             ],
         };
-
-        await this.client.post(payload);
     }
 
-    async sendInfo(title: string, message: string): Promise<void> {
-        const payload: SlackPayload = {
-            text: title,
-            blocks: [
-                {
-                    type: "header",
-                    text: { type: "plain_text", text: title, emoji: true },
-                },
-                {
-                    type: "section",
-                    text: { type: "mrkdwn", text: message },
-                },
+    async sendAlert(functionName: string, errorMsg: string): Promise<void> {
+        await this.client.post(this.buildPayload({
+            title: "Project Capacity Tracker - Sync Failed",
+            contextBar: `*Function:* ${functionName}   |   *Time:* ${
+                new Date().toISOString()
+            }`,
+            bodySections: [
+                `*Error Details:*\n\`\`\`${errorMsg}\`\`\``,
             ],
-        };
+            footer: "Investigate via Supabase Edge Functions Logs.",
+        }));
+    }
 
-        await this.client.post(payload);
+    async sendGhostBusterReport(airtableId: string): Promise<void> {
+        await this.client.post(this.buildPayload({
+            title: "Project Capacity Tracker - Ghost Record Caught",
+            contextBar: `*Record ID:* ${airtableId}   |   *Time:* ${
+                new Date().toISOString()
+            }`,
+            bodySections: [
+                `*What happened:*\nAirtable record *${airtableId}* was manually deleted or corrupted.\n\n*What the system did:*\nThe internal cache has been cleared. The link will be automatically re-established on the next sync.`,
+            ],
+            footer:
+                "No action required. The system will self-heal on the next cron run.",
+        }));
+    }
+
+    async sendAutoHealReport(
+        table: string,
+        healedRecords: string[],
+    ): Promise<void> {
+        await this.client.post(this.buildPayload({
+            title: "Project Capacity Tracker - Auto-Heal Applied",
+            contextBar: `*Table:* ${table}   |   *Time:* ${
+                new Date().toISOString()
+            }`,
+            bodySections: [
+                `*Healed Records (${healedRecords.length}):*\n${
+                    healedRecords.join("\n")
+                }`,
+            ],
+            footer:
+                "Existing Airtable records were matched and linked. No new records were created.",
+        }));
     }
 
     async sendSyncReport(stats: SyncReportStats): Promise<void> {
@@ -79,59 +105,24 @@ export class SlackService {
                 changesText += `- New Projects: ${newProjectsStr}\n`;
             }
         } else {
-            changesText += "_No changes detected._\n";
+            changesText += "_No changes detected._";
         }
+
+        const cleanupText = "*Cleanup stats:*\n" +
+            `- Time entries updated: ${stats.upserted}\n` +
+            `- Time entries deleted: ${stats.deleted}\n` +
+            `- Total users scanned: ${stats.usersScanned}`;
 
         const statusLabel = stats.status === "SUCCESS"
             ? "SUCCESS 🟢"
             : "FAILED 🔴";
 
-        const payload: SlackPayload = {
-            text: "Project Capacity Tracker - Sync Report",
-            blocks: [
-                {
-                    type: "header",
-                    text: {
-                        type: "plain_text",
-                        text: "Project Capacity Tracker - Sync Report",
-                        emoji: true,
-                    },
-                },
-                {
-                    type: "context",
-                    elements: [
-                        {
-                            type: "mrkdwn",
-                            text:
-                                `*Status:* ${statusLabel}   |   *Duration:* ${stats.durationSeconds}s`,
-                        },
-                    ],
-                },
-                { type: "divider" },
-                {
-                    type: "section",
-                    text: { type: "mrkdwn", text: changesText },
-                },
-                {
-                    type: "section",
-                    text: {
-                        type: "mrkdwn",
-                        text: "*Cleanup stats:*\n" +
-                            `- Time entries updated: ${stats.upserted}\n` +
-                            `- Time entries deleted: ${stats.deleted}\n` +
-                            `- Total users scanned: ${stats.usersScanned}`,
-                    },
-                },
-                {
-                    type: "context",
-                    elements: [{
-                        type: "mrkdwn",
-                        text: "System is now 100% in sync with Clockify.",
-                    }],
-                },
-            ],
-        };
-
-        await this.client.post(payload);
+        await this.client.post(this.buildPayload({
+            title: "Project Capacity Tracker - Sync Report",
+            contextBar:
+                `*Status:* ${statusLabel}   |   *Duration:* ${stats.durationSeconds}s`,
+            bodySections: [changesText, cleanupText],
+            footer: "System is now 100% in sync with Clockify.",
+        }));
     }
 }

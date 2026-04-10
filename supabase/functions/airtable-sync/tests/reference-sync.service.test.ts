@@ -7,7 +7,7 @@ import { SlackService } from "../../_shared/services/slack.service.ts";
 Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
   let createdRecordCount = 0;
   let savedAirtableId = "";
-  let slackInfoSent = false;
+  let slackAutoHealSent = false;
   let slackAlertSent = false;
 
   const mockRefRepo = {
@@ -27,8 +27,8 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
   } as unknown as AirtableService;
 
   const mockSlack = {
-    sendInfo: () => {
-      slackInfoSent = true;
+    sendAutoHealReport: () => {
+      slackAutoHealSent = true;
       return Promise.resolve();
     },
     sendAlert: () => {
@@ -47,7 +47,7 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
   const reset = (): void => {
     createdRecordCount = 0;
     savedAirtableId = "";
-    slackInfoSent = false;
+    slackAutoHealSent = false;
     slackAlertSent = false;
   };
 
@@ -66,7 +66,7 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
 
       assertEquals(createdRecordCount, 0);
       assertEquals(savedAirtableId, "recRossManualBoco");
-      assertEquals(slackInfoSent, true);
+      assertEquals(slackAutoHealSent, true);
       assertEquals(slackAlertSent, false);
     },
   );
@@ -86,7 +86,7 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
 
       assertEquals(createdRecordCount, 1);
       assertEquals(savedAirtableId, "recBrandNew");
-      assertEquals(slackInfoSent, false);
+      assertEquals(slackAutoHealSent, false);
       assertEquals(slackAlertSent, false);
     },
   );
@@ -113,7 +113,11 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
         "Should not create a third duplicate",
       );
       assertEquals(savedAirtableId, "", "Should not link to either ID");
-      assertEquals(slackInfoSent, false, "Should not log a successful heal");
+      assertEquals(
+        slackAutoHealSent,
+        false,
+        "Should not log a successful heal",
+      );
       assertEquals(slackAlertSent, true, "MUST trigger a critical Slack alert");
     },
   );
