@@ -1,8 +1,21 @@
 import { ApiConstants } from "../../_shared/constants/api.constants.ts";
 import { fetchWithBackoff } from "../../_shared/utils/api.utils.ts";
+import { OverwatchResult } from "../types/overwatch.types.ts";
+
+type FetchParams = {
+  filterByFormula?: string;
+  maxRecords?: number;
+  fields?: string[];
+};
+
+// Raw Airtable list response — only the fields we actually read.
+type AirtableListResponse = {
+  records?: unknown[];
+  offset?: string;
+};
 
 export class OverwatchService {
-  private readonly baseUrl = ApiConstants.AIRTABLE_BASE_URL;
+  private readonly baseUrl: string = ApiConstants.AIRTABLE_BASE_URL;
   private readonly headers: HeadersInit;
 
   constructor(private readonly pat: string, private readonly baseId: string) {
@@ -14,12 +27,8 @@ export class OverwatchService {
 
   async fetchRawRecords(
     tableId: string,
-    params: {
-      filterByFormula?: string;
-      maxRecords?: number;
-      fields?: string[];
-    },
-  ): Promise<{ records: unknown[] }> {
+    params: FetchParams,
+  ): Promise<OverwatchResult> {
     const allRecords: unknown[] = [];
     let offset: string | undefined = undefined;
 
@@ -37,8 +46,7 @@ export class OverwatchService {
 
       const url = `${this.baseUrl}/${encodeURIComponent(this.baseId)}/${
         encodeURIComponent(tableId)
-      }?${urlParams.toString()}`;
-
+      }?${urlParams}`;
       const res = await fetchWithBackoff(url, { headers: this.headers });
 
       if (!res.ok) {
@@ -48,17 +56,13 @@ export class OverwatchService {
         );
       }
 
-      const data = await res.json();
-
-      if (data.records) {
-        allRecords.push(...data.records);
-      }
+      const data = await res.json() as AirtableListResponse;
+      if (data.records) allRecords.push(...data.records);
 
       offset = data.offset;
 
       if (params.maxRecords && allRecords.length >= params.maxRecords) {
-        allRecords.length = params.maxRecords;
-        break;
+        return { records: allRecords.slice(0, params.maxRecords) };
       }
     } while (offset);
 

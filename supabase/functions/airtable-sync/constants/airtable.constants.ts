@@ -26,3 +26,5 @@ export const GHOST_ERROR_TYPES = [
   "ROW_DOES_NOT_EXIST",
   "RECORD_NOT_FOUND",
 ] as const;
+
+export const AIRTABLE_RECORD_ID_PATTERN = /rec[a-zA-Z0-9]{14}/;

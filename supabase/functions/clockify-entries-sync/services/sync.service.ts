@@ -8,6 +8,11 @@ import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.
 import { toSafeError } from "../../_shared/utils/error.utils.ts";
 import { fetchWithBackoff } from "../../_shared/utils/api.utils.ts";
 
+export type SyncRunResult = {
+  totalSynced: number;
+  mode: "FAST" | "DEEP";
+};
+
 export class SyncService {
   constructor(
     private readonly refRepo: ReferenceRepository,
@@ -16,13 +21,24 @@ export class SyncService {
     private readonly slack: SlackService,
   ) {}
 
-  //Accept 'lookbackDays', default to 1 (24 hours)
-  async syncRecentData(lookbackDays: number = 1): Promise<number> {
+  // Coordinates the full sync cycle and triggers Airtable downstream if any data changed.
+  async runSync(lookbackDays: number): Promise<SyncRunResult> {
+    const mode: "FAST" | "DEEP" = lookbackDays > 1 ? "DEEP" : "FAST";
+    const totalSynced = await this.syncRecentData(lookbackDays);
+
+    if (totalSynced > 0) {
+      await this.triggerAirtableSync();
+    } else {
+      console.log("No changes detected. Skipping Airtable sync.");
+    }
+
+    return { totalSynced, mode };
+  }
+
+  private async syncRecentData(lookbackDays: number): Promise<number> {
     const startTime = performance.now();
     const stats = SyncUtils.initializeStats();
     const startDate = SyncUtils.calculateStartDate(lookbackDays);
-
-    // Identify if this is the Nightly Audit (3am) or just the hourly check
     const isDeepClean = lookbackDays > 1;
 
     console.log(
@@ -31,57 +47,48 @@ export class SyncService {
       } (Window: ${lookbackDays} days, Start: ${startDate})`,
     );
 
-    try {
-      // Sync References from Clockify
-      console.log("Syncing References (Users/Projects/Clients)...");
-      await this.refSyncer.syncReferences(stats);
+    console.log("Syncing references (Users/Projects/Clients)...");
+    await this.refSyncer.syncReferences(stats);
 
-      // Fetch Users
-      const users = await this.refRepo.fetchActiveUsers();
-      console.log(`Checking ${users.length} users...`);
+    const users = await this.refRepo.fetchActiveUsers();
+    console.log(`Checking ${users.length} users...`);
 
-      const userErrors: string[] = [];
+    const userErrors: string[] = [];
+    const CONCURRENCY_LIMIT = 5;
 
-      // Process Users in chunks to respect Clockify rate limits but maximize speed
-      const CONCURRENCY_LIMIT = 5;
+    for (let i = 0; i < users.length; i += CONCURRENCY_LIMIT) {
+      const userChunk = users.slice(i, i + CONCURRENCY_LIMIT);
 
-      for (let i = 0; i < users.length; i += CONCURRENCY_LIMIT) {
-        const userChunk = users.slice(i, i + CONCURRENCY_LIMIT);
-
-        await Promise.all(
-          userChunk.map(async (user) => {
-            try {
-              await this.userSyncer.syncUser(user, startDate, stats);
-            } catch (err) {
-              const safeError = toSafeError(err);
-              console.warn(
-                `   Error syncing ${user.name}: ${safeError.message}`,
-              );
-              userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
-            }
-          }),
-        );
-      }
-
-      if (userErrors.length > 0) {
-        const detailedErrors = userErrors.join("\n");
-        throw new DownstreamSyncError(
-          `Sync completed with errors for ${userErrors.length} users:\n${detailedErrors}`,
-        );
-      }
-    } catch (err) {
-      const msg = toSafeError(err).message;
-      await this.slack.sendAlert("syncRecentData", msg);
-      throw err;
+      await Promise.all(
+        userChunk.map(async (user) => {
+          try {
+            await this.userSyncer.syncUser(user, startDate, stats);
+          } catch (err) {
+            const safeError = toSafeError(err);
+            console.warn(`   Error syncing ${user.name}: ${safeError.message}`);
+            userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
+          }
+        }),
+      );
     }
 
-    // Finalize & Report
+    if (userErrors.length > 0) {
+      throw new DownstreamSyncError(
+        `Sync completed with errors for ${userErrors.length} user(s):\n${
+          userErrors.join("\n")
+        }`,
+      );
+    }
+
     SyncUtils.finalizeStats(stats, startTime);
-    const hasChanges = stats.upserted > 0 || stats.deleted > 0 ||
-      stats.newUsers.length > 0 || stats.renamedUsers.length > 0 ||
+
+    const hasChanges = stats.upserted > 0 ||
+      stats.deleted > 0 ||
+      stats.newUsers.length > 0 ||
+      stats.renamedUsers.length > 0 ||
       stats.newProjects.length > 0;
 
-    //Only send the report if it's the Deep Clean Cron
+    // Audit report is only meaningful on the deep-clean run.
     if (isDeepClean && hasChanges) {
       await this.slack.sendSyncReport(stats);
     } else if (hasChanges) {
@@ -92,43 +99,24 @@ export class SyncService {
   }
 
   // Triggers the Airtable sync function with Slack Alerting
-  async triggerAirtableSync(): Promise<void> {
-    console.log("Changes detected. Triggering Airtable Sync...");
+  private async triggerAirtableSync(): Promise<void> {
+    console.log("Changes detected. Triggering Airtable sync...");
 
-    let response: Response;
-
-    try {
-      response = await fetchWithBackoff(
-        `${SUPABASE_CONFIG.url}/functions/v1/airtable-sync`,
-        {
-          method: "POST",
-          headers: {
-            "x-sync-secret": SUPABASE_CONFIG.syncApiSecret,
-            "Content-Type": "application/json",
-          },
+    const response = await fetchWithBackoff(
+      `${SUPABASE_CONFIG.url}/functions/v1/airtable-sync`,
+      {
+        method: "POST",
+        headers: {
+          "x-sync-secret": SUPABASE_CONFIG.syncApiSecret,
+          "Content-Type": "application/json",
         },
-      );
-    } catch (err) {
-      const msg = toSafeError(err).message;
-      console.error(`Failed to reach Airtable Sync function: ${msg}`);
-      await this.slack.sendAlert("triggerAirtableSync in SyncService", msg);
-      throw new DownstreamSyncError(
-        "Airtable Sync Request Failed.",
-      );
-    }
+      },
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      const errorMsg = `Status: ${response.status} | Body: ${errorText}`;
-
-      console.error(`Failed to trigger Airtable sync: ${errorMsg}`);
-      await this.slack.sendAlert(
-        "triggerAirtableSync in SyncService",
-        errorMsg,
-      );
-
       throw new DownstreamSyncError(
-        "Airtable Sync Failed",
+        `Airtable sync trigger failed — Status: ${response.status} | Body: ${errorText}`,
       );
     }
 

@@ -1,9 +1,9 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert";
 import { OverwatchService } from "../services/overwatch.service.ts";
 import { OverwatchController } from "../controllers/overwatch.controller.ts";
+import { ValidationError } from "../../_shared/exceptions/custom.exceptions.ts";
 
-Deno.test("OverwatchController - Zod Validation & HTTP Suite", async (t) => {
-  // 1. Create a Mock Service
+Deno.test("OverwatchController - Validation & HTTP Suite", async (t) => {
   const mockService = {
     fetchRawRecords: (tableId: string, _params: unknown) => {
       // Simulate an Airtable API crash for a specific table ID
@@ -22,41 +22,55 @@ Deno.test("OverwatchController - Zod Validation & HTTP Suite", async (t) => {
   const controller = new OverwatchController(mockService);
 
   await t.step(
-    "1. It should REJECT (400) if the payload is completely empty",
+    "1. Throws ValidationError if the payload is completely empty",
     async () => {
-      const req = new Request("https://mock.com", { method: "POST", body: "" });
-      const res = await controller.handleRequest(req);
-      const body = await res.json();
+      const req = new Request("https://mock.com", {
+        method: "POST",
+        body: "",
+      });
 
-      assertEquals(res.status, 400);
-      assertEquals(body.success, false);
-      assertStringIncludes(body.error, "Empty payload");
+      try {
+        await controller.handleRequest(req);
+        throw new Error("Expected a ValidationError to be thrown");
+      } catch (err) {
+        assertEquals(err instanceof ValidationError, true);
+        assertStringIncludes(
+          (err as ValidationError).message,
+          "Empty payload",
+        );
+      }
     },
   );
 
   await t.step(
-    "2. It should REJECT (400) if tableId is missing from the JSON",
+    "2. Throws ValidationError if tableId is missing from the JSON",
     async () => {
       const req = new Request("https://mock.com", {
         method: "POST",
         body: JSON.stringify({ filterByFormula: "{Name}='Poko'" }),
       });
-      const res = await controller.handleRequest(req);
-      const body = await res.json();
 
-      assertEquals(res.status, 400);
-      assertEquals(body.success, false);
-      assertStringIncludes(body.error, "tableId"); // Zod caught the missing field
+      try {
+        await controller.handleRequest(req);
+        throw new Error("Expected a ValidationError to be thrown");
+      } catch (err) {
+        assertEquals(err instanceof ValidationError, true);
+        assertStringIncludes(
+          (err as ValidationError).message,
+          "tableId",
+        );
+      }
     },
   );
 
   await t.step(
-    "3. It should RETURN 200 and raw data for a valid payload",
+    "3. Returns 200 with raw data for a valid payload",
     async () => {
       const req = new Request("https://mock.com", {
         method: "POST",
         body: JSON.stringify({ tableId: "tbl_success", maxRecords: 1 }),
       });
+
       const res = await controller.handleRequest(req);
       const body = await res.json();
 
@@ -67,18 +81,23 @@ Deno.test("OverwatchController - Zod Validation & HTTP Suite", async (t) => {
   );
 
   await t.step(
-    "4. It should RETURN 500 if the downstream Airtable API fails",
+    "4. Propagates downstream Airtable errors for withEdgeWrapper to handle",
     async () => {
       const req = new Request("https://mock.com", {
         method: "POST",
         body: JSON.stringify({ tableId: "tbl_fail" }),
       });
-      const res = await controller.handleRequest(req);
-      const body = await res.json();
 
-      assertEquals(res.status, 500);
-      assertEquals(body.success, false);
-      assertStringIncludes(body.error, "Airtable API Error");
+      try {
+        await controller.handleRequest(req);
+        throw new Error("Expected a downstream error to be thrown");
+      } catch (err) {
+        assertEquals(err instanceof ValidationError, false);
+        assertStringIncludes(
+          (err as Error).message,
+          "Airtable API Error",
+        );
+      }
     },
   );
 });

@@ -1,6 +1,6 @@
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
 import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
-import { SyncReportStats } from "../../_shared/types/sync.types.ts";
+import { DbUser, SyncReportStats } from "../../_shared/types/sync.types.ts";
 
 export class UserEntrySyncer {
   constructor(
@@ -9,10 +9,10 @@ export class UserEntrySyncer {
   ) {}
 
   async syncUser(
-    user: { id: string; clockify_id: string; name: string },
+    user: DbUser,
     startDate: string,
     stats: SyncReportStats,
-  ) {
+  ): Promise<void> {
     const entries = await this.clockify.fetchRecentUserEntries(
       user.clockify_id,
       startDate,

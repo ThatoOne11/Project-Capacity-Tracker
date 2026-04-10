@@ -1,3 +1,8 @@
+export type {
+  ProjectRow,
+  ReferenceRecord,
+} from "../../_shared/types/sync.types.ts";
+
 export type AggregateRow = {
   airtable_user_id: string | null;
   user_name: string;
@@ -10,9 +15,4 @@ export type AggregateRow = {
 export type ViewRow = {
   user_name: string | null;
   project_name: string | null;
-};
-
-export type ReferenceRecord = {
-  id: string;
-  name: string;
 };

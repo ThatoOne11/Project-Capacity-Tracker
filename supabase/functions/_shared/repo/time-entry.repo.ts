@@ -6,16 +6,13 @@ import { SyncResult, TimeEntryRow } from "../types/sync.types.ts";
 export class TimeEntryRepository {
     constructor(private readonly client: SupabaseClient) {}
 
-    // Main entry point: Handles Upserts + Soft Deletes for a time window
     async syncUserTimeWindow(
         internalUserId: string,
         startTime: string,
         entries: ClockifyTimeEntry[],
     ): Promise<{ upserted: number; deleted: number }> {
-        // 1. Upsert incoming entries
         const { synced } = await this.processBatch(entries);
 
-        // 2. Identify "Ghost" Entries (In DB but NOT in incoming list)
         const incomingIds = new Set(entries.map((e) => e.id));
         const idsToDelete = await this.findGhostEntries(
             internalUserId,
@@ -23,13 +20,11 @@ export class TimeEntryRepository {
             incomingIds,
         );
 
-        // 3. Soft Delete the ghosts in batches
         const deletedCount = await this.softDeleteEntries(idsToDelete);
 
         return { upserted: synced, deleted: deletedCount };
     }
 
-    // Helper: Finds DB entries that no longer exist in the incoming Clockify payload
     private async findGhostEntries(
         internalUserId: string,
         startTime: string,
@@ -53,11 +48,9 @@ export class TimeEntryRepository {
                 break;
             }
 
-            if (!existingRows || existingRows.length === 0) {
-                break;
-            }
+            if (!existingRows || existingRows.length === 0) break;
 
-            for (const row of existingRows) {
+            for (const row of existingRows as Array<{ clockify_id: string }>) {
                 if (!incomingIds.has(row.clockify_id)) {
                     idsToDelete.push(row.clockify_id);
                 }
@@ -69,7 +62,6 @@ export class TimeEntryRepository {
         return idsToDelete;
     }
 
-    // Helper: Soft-deletes a list of entry IDs in batches of 50
     private async softDeleteEntries(idsToDelete: string[]): Promise<number> {
         if (idsToDelete.length === 0) return 0;
 
@@ -79,13 +71,13 @@ export class TimeEntryRepository {
         for (let i = 0; i < idsToDelete.length; i += DELETE_BATCH_SIZE) {
             const batch = idsToDelete.slice(i, i + DELETE_BATCH_SIZE);
 
-            const { error: delError } = await this.client
+            const { error } = await this.client
                 .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
                 .update({ deleted_at: new Date().toISOString() })
                 .in("clockify_id", batch);
 
-            if (delError) {
-                console.error("Failed to soft delete batch:", delError.message);
+            if (error) {
+                console.error("Failed to soft delete batch:", error.message);
             } else {
                 deletedCount += batch.length;
             }
@@ -94,14 +86,11 @@ export class TimeEntryRepository {
         return deletedCount;
     }
 
-    // Processes a raw batch of entries: Resolves IDs -> Transforms -> Upserts
     async processBatch(entries: ClockifyTimeEntry[]): Promise<SyncResult> {
         if (entries.length === 0) return { synced: 0, skipped: 0 };
 
-        // A. Resolve Foreign Keys (Users & Projects)
         const { userMap, projectMap } = await this.resolveDependencies(entries);
 
-        // B. Transform to DB Rows
         const rows: TimeEntryRow[] = [];
         let skipped = 0;
 
@@ -123,11 +112,10 @@ export class TimeEntryRepository {
                 project_id: entry.projectId
                     ? (projectMap.get(entry.projectId) ?? null)
                     : null,
-                deleted_at: null, // "Undelete" if it reappears
+                deleted_at: null,
             });
         }
 
-        // C. Bulk Upsert
         if (rows.length > 0) {
             const { error } = await this.client
                 .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
@@ -141,28 +129,28 @@ export class TimeEntryRepository {
         return { synced: rows.length, skipped };
     }
 
-    // Helper: Batches ID lookups to avoid N+1 queries
-    private async resolveDependencies(entries: ClockifyTimeEntry[]) {
+    private async resolveDependencies(entries: ClockifyTimeEntry[]): Promise<{
+        userMap: Map<string, string>;
+        projectMap: Map<string, string>;
+    }> {
         const userIds = [...new Set(entries.map((e) => e.userId))];
         const projectIds = [
             ...new Set(
-                entries.map((e) => e.projectId).filter(Boolean) as string[],
+                entries
+                    .map((e) => e.projectId)
+                    .filter((id): id is string => id != null),
             ),
         ];
 
         const [usersRes, projectsRes] = await Promise.all([
-            this.client.from(SupabaseTables.CLOCKIFY_USERS).select(
-                "id, clockify_id",
-            ).in(
-                "clockify_id",
-                userIds,
-            ),
-            this.client.from(SupabaseTables.CLOCKIFY_PROJECTS).select(
-                "id, clockify_id",
-            ).in(
-                "clockify_id",
-                projectIds,
-            ),
+            this.client
+                .from(SupabaseTables.CLOCKIFY_USERS)
+                .select("id, clockify_id")
+                .in("clockify_id", userIds),
+            this.client
+                .from(SupabaseTables.CLOCKIFY_PROJECTS)
+                .select("id, clockify_id")
+                .in("clockify_id", projectIds),
         ]);
 
         if (usersRes.error) {
@@ -177,9 +165,13 @@ export class TimeEntryRepository {
         }
 
         return {
-            userMap: new Map(usersRes.data?.map((u) => [u.clockify_id, u.id])),
-            projectMap: new Map(
-                projectsRes.data?.map((p) => [p.clockify_id, p.id]),
+            userMap: new Map<string, string>(
+                (usersRes.data as Array<{ clockify_id: string; id: string }>)
+                    .map((u) => [u.clockify_id, u.id]),
+            ),
+            projectMap: new Map<string, string>(
+                (projectsRes.data as Array<{ clockify_id: string; id: string }>)
+                    .map((p) => [p.clockify_id, p.id]),
             ),
         };
     }

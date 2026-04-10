@@ -1,65 +1,60 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { ReferenceSyncService } from "../services/reference-sync.service.ts";
-
-type RefSyncArgs = ConstructorParameters<typeof ReferenceSyncService>;
+import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
+import { AirtableService } from "../services/airtable.service.ts";
+import { SlackService } from "../../_shared/services/slack.service.ts";
 
 Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
   let createdRecordCount = 0;
-  let updatedSupabaseId = "";
-  let slackInfoSent = false;
+  let savedAirtableId = "";
+  let slackAutoHealSent = false;
   let slackAlertSent = false;
 
-  // 1. Mock Supabase (Catches the auto-healed ID)
-  const mockSupabase = {
-    from: () => ({
-      update: (payload: { airtable_id: string }) => ({
-        eq: (_col: string, _val: string) => {
-          updatedSupabaseId = payload.airtable_id;
-          return Promise.resolve({ error: null });
-        },
-      }),
-    }),
-  } as unknown as RefSyncArgs[0];
+  const mockRefRepo = {
+    saveAirtableId: (_table: string, _recordId: string, airtableId: string) => {
+      savedAirtableId = airtableId;
+      return Promise.resolve();
+    },
+  } as unknown as ReferenceRepository;
 
-  // 2. Mock Airtable (Configurable per test)
-  let mockAirtableRecords: { id: string; name: string }[] = [];
+  let mockAirtableRecords: Array<{ id: string; name: string }> = [];
   const mockAirtable = {
     fetchAllReferenceRecords: () => Promise.resolve(mockAirtableRecords),
     createReferenceRecord: () => {
       createdRecordCount++;
       return Promise.resolve("recBrandNew");
     },
-  } as unknown as RefSyncArgs[1];
+  } as unknown as AirtableService;
 
-  // 3. Mock Slack (Verifies visibility & critical alerts)
   const mockSlack = {
-    sendInfo: () => {
-      slackInfoSent = true;
+    sendAutoHealReport: () => {
+      slackAutoHealSent = true;
       return Promise.resolve();
     },
     sendAlert: () => {
       slackAlertSent = true;
       return Promise.resolve();
     },
-  } as unknown as RefSyncArgs[2];
+  } as unknown as SlackService;
 
   const service = new ReferenceSyncService(
-    mockSupabase,
+    mockRefRepo,
     mockAirtable,
     mockSlack,
   );
 
-  // --- TESTS ---
+  // Reset helper called before each step to guarantee test isolation.
+  const reset = (): void => {
+    createdRecordCount = 0;
+    savedAirtableId = "";
+    slackAutoHealSent = false;
+    slackAlertSent = false;
+  };
 
   await t.step(
-    "1. It should AUTO-HEAL and skip creation if exactly one normalized name matches",
+    "1. AUTO-HEALs and skips creation when exactly one normalized name matches",
     async () => {
-      createdRecordCount = 0;
-      updatedSupabaseId = "";
-      slackInfoSent = false;
-      slackAlertSent = false;
-
-      // Airtable has exactly ONE "Boco"
+      reset();
       mockAirtableRecords = [{ id: "recRossManualBoco", name: "Boco" }];
 
       await service["createMissingRecords"](
@@ -70,20 +65,16 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
       );
 
       assertEquals(createdRecordCount, 0);
-      assertEquals(updatedSupabaseId, "recRossManualBoco");
-      assertEquals(slackInfoSent, true); // Logged the heal
-      assertEquals(slackAlertSent, false); // No critical error
+      assertEquals(savedAirtableId, "recRossManualBoco");
+      assertEquals(slackAutoHealSent, true);
+      assertEquals(slackAlertSent, false);
     },
   );
 
   await t.step(
-    "2. It should CREATE a new record if it truly does not exist",
+    "2. CREATEs a new Airtable record when the name truly does not exist",
     async () => {
-      createdRecordCount = 0;
-      updatedSupabaseId = "";
-      slackInfoSent = false;
-      slackAlertSent = false;
-
+      reset();
       mockAirtableRecords = [{ id: "recRossManualBoco", name: "Boco" }];
 
       await service["createMissingRecords"](
@@ -94,21 +85,16 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
       );
 
       assertEquals(createdRecordCount, 1);
-      assertEquals(updatedSupabaseId, "recBrandNew");
-      assertEquals(slackInfoSent, false);
+      assertEquals(savedAirtableId, "recBrandNew");
+      assertEquals(slackAutoHealSent, false);
       assertEquals(slackAlertSent, false);
     },
   );
 
   await t.step(
-    "3. It should ABORT safely and ALERT Slack if human duplicates exist in Airtable",
+    "3. ABORTs and sends a Slack ALERT when human duplicates exist in Airtable",
     async () => {
-      createdRecordCount = 0;
-      updatedSupabaseId = "";
-      slackInfoSent = false;
-      slackAlertSent = false;
-
-      // Airtable has TWO records that normalize to "boco"
+      reset();
       mockAirtableRecords = [
         { id: "recDuplicate1", name: "Boco" },
         { id: "recDuplicate2", name: "BOCO " },
@@ -121,15 +107,17 @@ Deno.test("ReferenceSyncService - Auto-Healing & Conflict Suite", async (t) => {
         [{ id: "uuid-123", name: "boco" }],
       );
 
-      // ASSERTIONS:
-      // It MUST NOT guess which ID to use. It must skip everything.
       assertEquals(
         createdRecordCount,
         0,
         "Should not create a third duplicate",
       );
-      assertEquals(updatedSupabaseId, "", "Should not link to either ID");
-      assertEquals(slackInfoSent, false, "Should not log a successful heal");
+      assertEquals(savedAirtableId, "", "Should not link to either ID");
+      assertEquals(
+        slackAutoHealSent,
+        false,
+        "Should not log a successful heal",
+      );
       assertEquals(slackAlertSent, true, "MUST trigger a critical Slack alert");
     },
   );

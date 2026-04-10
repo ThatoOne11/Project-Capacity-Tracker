@@ -3,7 +3,7 @@ import { SlackPayload } from "../types/slack.types.ts";
 import { fetchWithBackoff } from "../utils/api.utils.ts";
 
 export class SlackClient {
-    private readonly webhookUrl = SLACK_CONFIG.webhookUrl;
+    private readonly webhookUrl: string = SLACK_CONFIG.webhookUrl;
 
     async post(payload: SlackPayload): Promise<void> {
         if (!this.webhookUrl) {

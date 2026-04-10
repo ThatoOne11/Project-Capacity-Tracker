@@ -3,6 +3,7 @@ import { z } from "npm:zod";
 export const SyncRequestSchema = z.object({
     lookbackDays: z.number().int().positive().optional(),
 });
+
 export type SyncRequestBody = z.infer<typeof SyncRequestSchema>;
 
 export type SyncResult = {
@@ -30,5 +31,26 @@ export type TimeEntryRow = {
     duration: string | null;
     user_id: string;
     project_id: string | null;
-    deleted_at?: string | null;
+    deleted_at: string | null;
+};
+
+// Shape for a Clockify user row as stored in Supabase.
+export type DbUser = {
+    id: string;
+    clockify_id: string;
+    name: string;
+};
+
+// Generic shape for any reference table row (users, projects, clients).
+export type ReferenceRecord = {
+    id: string;
+    name: string;
+};
+
+// Shape of a clockify_projects row enriched with its Airtable link status.
+export type ProjectRow = {
+    id: string;
+    name: string;
+    client_id: string | null;
+    airtable_id: string | null;
 };
