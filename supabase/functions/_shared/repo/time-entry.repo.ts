@@ -6,71 +6,91 @@ import { SyncResult, TimeEntryRow } from "../types/sync.types.ts";
 export class TimeEntryRepository {
     constructor(private readonly client: SupabaseClient) {}
 
-    // Main entry point: Handles Upserts + Soft Deletes for a time window
     async syncUserTimeWindow(
         internalUserId: string,
         startTime: string,
         entries: ClockifyTimeEntry[],
     ): Promise<{ upserted: number; deleted: number }> {
-        // 1. Upsert incoming entries
         const { synced } = await this.processBatch(entries);
 
-        // 2. Identify "Ghost" Entries (In DB but NOT in incoming list)
-        // We fetch DB IDs and diff in memory to avoid errors
-        // A. Get all currently active IDs for this user & window
-        const { data: existingRows, error } = await this.client
-            .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
-            .select("clockify_id")
-            .eq("user_id", internalUserId)
-            .gte("start_time", startTime)
-            .is("deleted_at", null);
-
-        if (error) {
-            console.error("Error checking deletions:", error.message);
-            return { upserted: synced, deleted: 0 };
-        }
-
-        // B. Calculate difference in memory (Fast & Safe)
         const incomingIds = new Set(entries.map((e) => e.id));
-        const idsToDelete = existingRows
-            .filter((row) => !incomingIds.has(row.clockify_id))
-            .map((row) => row.clockify_id);
+        const idsToDelete = await this.findGhostEntries(
+            internalUserId,
+            startTime,
+            incomingIds,
+        );
 
-        // C. Soft Delete the ghosts
-        let deletedCount = 0;
-        if (idsToDelete.length > 0) {
-            // Batch the deletions just in case (e.g. chunks of 50)
-            const BATCH_SIZE = 50;
-            for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
-                const batch = idsToDelete.slice(i, i + BATCH_SIZE);
-
-                const { error: delError } = await this.client
-                    .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
-                    .update({ deleted_at: new Date().toISOString() })
-                    .in("clockify_id", batch);
-
-                if (delError) {
-                    console.error(
-                        "Failed to soft delete batch:",
-                        delError.message,
-                    );
-                } else {
-                    deletedCount += batch.length;
-                }
-            }
-        }
+        const deletedCount = await this.softDeleteEntries(idsToDelete);
 
         return { upserted: synced, deleted: deletedCount };
     }
 
-    // Processes a raw batch of entries: Resolves IDs -> Transforms -> Upserts
+    private async findGhostEntries(
+        internalUserId: string,
+        startTime: string,
+        incomingIds: Set<string>,
+    ): Promise<string[]> {
+        const idsToDelete: string[] = [];
+        const DB_CHUNK_SIZE = 1000;
+        let offset = 0;
+
+        while (true) {
+            const { data: existingRows, error } = await this.client
+                .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
+                .select("clockify_id")
+                .eq("user_id", internalUserId)
+                .gte("start_time", startTime)
+                .is("deleted_at", null)
+                .range(offset, offset + DB_CHUNK_SIZE - 1);
+
+            if (error) {
+                console.error("Error checking deletions:", error.message);
+                break;
+            }
+
+            if (!existingRows || existingRows.length === 0) break;
+
+            for (const row of existingRows as Array<{ clockify_id: string }>) {
+                if (!incomingIds.has(row.clockify_id)) {
+                    idsToDelete.push(row.clockify_id);
+                }
+            }
+
+            offset += DB_CHUNK_SIZE;
+        }
+
+        return idsToDelete;
+    }
+
+    private async softDeleteEntries(idsToDelete: string[]): Promise<number> {
+        if (idsToDelete.length === 0) return 0;
+
+        let deletedCount = 0;
+        const DELETE_BATCH_SIZE = 50;
+
+        for (let i = 0; i < idsToDelete.length; i += DELETE_BATCH_SIZE) {
+            const batch = idsToDelete.slice(i, i + DELETE_BATCH_SIZE);
+
+            const { error } = await this.client
+                .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
+                .update({ deleted_at: new Date().toISOString() })
+                .in("clockify_id", batch);
+
+            if (error) {
+                console.error("Failed to soft delete batch:", error.message);
+            } else {
+                deletedCount += batch.length;
+            }
+        }
+
+        return deletedCount;
+    }
+
     async processBatch(entries: ClockifyTimeEntry[]): Promise<SyncResult> {
         if (entries.length === 0) return { synced: 0, skipped: 0 };
 
-        // A. Resolve Foreign Keys (Users & Projects)
         const { userMap, projectMap } = await this.resolveDependencies(entries);
 
-        // B. Transform to DB Rows
         const rows: TimeEntryRow[] = [];
         let skipped = 0;
 
@@ -92,11 +112,10 @@ export class TimeEntryRepository {
                 project_id: entry.projectId
                     ? (projectMap.get(entry.projectId) ?? null)
                     : null,
-                deleted_at: null, // "Undelete" if it reappears
+                deleted_at: null,
             });
         }
 
-        // C. Bulk Upsert
         if (rows.length > 0) {
             const { error } = await this.client
                 .from(SupabaseTables.CLOCKIFY_TIME_ENTRIES)
@@ -110,28 +129,28 @@ export class TimeEntryRepository {
         return { synced: rows.length, skipped };
     }
 
-    // Helper: Batches ID lookups to avoid N+1 queries
-    private async resolveDependencies(entries: ClockifyTimeEntry[]) {
+    private async resolveDependencies(entries: ClockifyTimeEntry[]): Promise<{
+        userMap: Map<string, string>;
+        projectMap: Map<string, string>;
+    }> {
         const userIds = [...new Set(entries.map((e) => e.userId))];
         const projectIds = [
             ...new Set(
-                entries.map((e) => e.projectId).filter(Boolean) as string[],
+                entries
+                    .map((e) => e.projectId)
+                    .filter((id): id is string => id != null),
             ),
         ];
 
         const [usersRes, projectsRes] = await Promise.all([
-            this.client.from(SupabaseTables.CLOCKIFY_USERS).select(
-                "id, clockify_id",
-            ).in(
-                "clockify_id",
-                userIds,
-            ),
-            this.client.from(SupabaseTables.CLOCKIFY_PROJECTS).select(
-                "id, clockify_id",
-            ).in(
-                "clockify_id",
-                projectIds,
-            ),
+            this.client
+                .from(SupabaseTables.CLOCKIFY_USERS)
+                .select("id, clockify_id")
+                .in("clockify_id", userIds),
+            this.client
+                .from(SupabaseTables.CLOCKIFY_PROJECTS)
+                .select("id, clockify_id")
+                .in("clockify_id", projectIds),
         ]);
 
         if (usersRes.error) {
@@ -146,9 +165,13 @@ export class TimeEntryRepository {
         }
 
         return {
-            userMap: new Map(usersRes.data?.map((u) => [u.clockify_id, u.id])),
-            projectMap: new Map(
-                projectsRes.data?.map((p) => [p.clockify_id, p.id]),
+            userMap: new Map<string, string>(
+                (usersRes.data as Array<{ clockify_id: string; id: string }>)
+                    .map((u) => [u.clockify_id, u.id]),
+            ),
+            projectMap: new Map<string, string>(
+                (projectsRes.data as Array<{ clockify_id: string; id: string }>)
+                    .map((p) => [p.clockify_id, p.id]),
             ),
         };
     }

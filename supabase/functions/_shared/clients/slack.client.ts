@@ -1,8 +1,9 @@
 import { SLACK_CONFIG } from "../config.ts";
 import { SlackPayload } from "../types/slack.types.ts";
+import { fetchWithBackoff } from "../utils/api.utils.ts";
 
 export class SlackClient {
-    private readonly webhookUrl = SLACK_CONFIG.webhookUrl;
+    private readonly webhookUrl: string = SLACK_CONFIG.webhookUrl;
 
     async post(payload: SlackPayload): Promise<void> {
         if (!this.webhookUrl) {
@@ -13,7 +14,7 @@ export class SlackClient {
         }
 
         try {
-            const response = await fetch(this.webhookUrl, {
+            const response = await fetchWithBackoff(this.webhookUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),

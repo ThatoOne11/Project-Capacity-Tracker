@@ -1,14 +1,11 @@
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ClockifyService } from "../../_shared/services/clockify.service.ts";
 import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
 import { TimeEntryRepository } from "../../_shared/repo/time-entry.repo.ts";
-import { SupabaseTables } from "../../_shared/constants/supabase.constants.ts";
 import { toSafeError } from "../../_shared/utils/error.utils.ts";
 import { DownstreamSyncError } from "../../_shared/exceptions/custom.exceptions.ts";
 
 export class BackfillService {
   constructor(
-    private readonly supabase: SupabaseClient,
     private readonly clockify: ClockifyService,
     private readonly refRepo: ReferenceRepository,
     private readonly entryRepo: TimeEntryRepository,
@@ -24,19 +21,17 @@ export class BackfillService {
   // 2: Pagination and user iteration loop
   async syncTimeEntries(
     startDate: string,
-    targetUserId?: string,
+    clockifyUserId?: string,
   ): Promise<number> {
-    // A. Get the users we need to process
-    let userQuery = this.supabase.from(SupabaseTables.CLOCKIFY_USERS).select(
-      "id, clockify_id, name",
-    );
+    const dbUsers = await this.refRepo.fetchUsersByClockifyId(clockifyUserId);
 
-    if (targetUserId) {
-      userQuery = userQuery.eq("clockify_id", targetUserId);
+    if (dbUsers.length === 0) {
+      throw new DownstreamSyncError(
+        clockifyUserId
+          ? `No user found in DB with clockify_id: ${clockifyUserId}`
+          : "No users found in DB — run syncReferenceData first.",
+      );
     }
-
-    const { data: dbUsers, error } = await userQuery;
-    if (error || !dbUsers) throw new Error("Could not fetch users from DB");
 
     console.log(
       `Starting backfill for ${dbUsers.length} user(s) from ${startDate}`,
@@ -44,49 +39,48 @@ export class BackfillService {
 
     let totalSynced = 0;
     const userErrors: string[] = [];
+    const CONCURRENCY_LIMIT = 5;
 
-    // B. Loop through every user
-    for (const user of dbUsers) {
-      console.log(`   👤 Processing: ${user.name}`);
+    for (let i = 0; i < dbUsers.length; i += CONCURRENCY_LIMIT) {
+      const chunk = dbUsers.slice(i, i + CONCURRENCY_LIMIT);
 
-      // Try/Catch per user to prevent one failure from stopping the whole job
-      try {
-        let page = 1;
-        let hasMore = true;
+      await Promise.all(
+        chunk.map(async (user) => {
+          console.log(`   👤 Processing: ${user.name}`);
 
-        // C. Handle Pagination
-        while (hasMore) {
-          const entries = await this.clockify.fetchUserTimeEntries(
-            user.clockify_id,
-            startDate,
-            page,
-          );
+          // Try/Catch per user to prevent one failure from stopping the whole job
+          try {
+            let page = 1;
 
-          if (!entries || entries.length === 0) {
-            hasMore = false;
-            break;
+            while (true) {
+              const entries = await this.clockify.fetchUserTimeEntries(
+                user.clockify_id,
+                startDate,
+                page,
+              );
+
+              if (!entries || entries.length === 0) break;
+
+              const result = await this.entryRepo.processBatch(entries);
+              totalSynced += result.synced;
+              page++;
+            }
+          } catch (err) {
+            const safeError = toSafeError(err);
+            console.error(
+              `   FAILED to backfill ${user.name}: ${safeError.message}`,
+            );
+            userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
           }
-
-          const result = await this.entryRepo.processBatch(entries);
-          totalSynced += result.synced;
-
-          page++;
-
-          // D. Rate Limit Protection
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      } catch (err) {
-        const safeError = toSafeError(err);
-        console.error(
-          `   FAILED to backfill ${user.name}: ${safeError.message}`,
-        );
-        userErrors.push(`UserID [${user.id}]: ${safeError.message}`);
-      }
+        }),
+      );
     }
 
     if (userErrors.length > 0) {
       throw new DownstreamSyncError(
-        `Backfill completed with partial errors for ${userErrors.length} users.`,
+        `Backfill completed with partial errors for ${userErrors.length} user(s):\n${
+          userErrors.join("\n")
+        }`,
       );
     }
 

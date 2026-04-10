@@ -1,30 +1,40 @@
-import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertRejects,
+} from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { SyncOrchestratorService } from "../services/sync-orchestrator.service.ts";
 import { AirtableDiffCalculator } from "../logic/diff.calculator.ts";
 import { AIRTABLE_FIELDS } from "../constants/airtable.constants.ts";
 import { AirtableUpdate } from "../types/airtable.types.ts";
+import { ReferenceRepository } from "../../_shared/repo/reference.repo.ts";
+import { AggregateRepository } from "../repo/aggregate.repo.ts";
+import { SlackService } from "../../_shared/services/slack.service.ts";
+import { ReferenceSyncService } from "../services/reference-sync.service.ts";
+import { AirtableService } from "../services/airtable.service.ts";
 
-// Extract types dynamically to completely avoid the use of 'any'
-type OrchestratorArgs = ConstructorParameters<typeof SyncOrchestratorService>;
+const mockSlack = {
+  sendGhostBusterReport: () => Promise.resolve(),
+} as unknown as SlackService;
 
-// Minimal mock implementations to test orchestration flow without hitting real APIs
-const mockSupabase = {
-  from: () => ({ select: () => Promise.resolve({ data: [], error: null }) }),
-} as unknown as OrchestratorArgs[0];
-
-const mockSlack = {} as unknown as OrchestratorArgs[1];
+const mockAggregateRepo = {
+  fetchActiveNamesFromViews: () =>
+    Promise.resolve({ activeUsers: [], activeProjects: [] }),
+  fetchAggregateView: () => Promise.resolve([]),
+} as unknown as AggregateRepository;
 
 const mockReferenceSync = {
-  syncAllReferences: () => Promise.resolve(),
+  syncAllReferences: (_activeUsers: string[], _activeProjects: string[]) =>
+    Promise.resolve(),
   getOrBuildProjectAssignments: () =>
     Promise.resolve(new Map<string, string>()),
-} as unknown as OrchestratorArgs[3];
+} as unknown as ReferenceSyncService;
 
-Deno.test("SyncOrchestratorService - Execution Flow", async (t) => {
+const mockRefRepo = {} as unknown as ReferenceRepository;
+
+Deno.test("SyncOrchestratorService - Execution & Ghost Buster Suite", async (t) => {
   await t.step(
-    "Deduplicates updates targeting the same Airtable record ID",
+    "1. Deduplicates updates targeting the same Airtable record ID",
     async () => {
-      // Simulate the calculator returning duplicate updates for the same Airtable ID
       const originalCalculateDiffs = AirtableDiffCalculator.calculateDiffs;
       AirtableDiffCalculator.calculateDiffs = () => ({
         inserts: [],
@@ -50,29 +60,92 @@ Deno.test("SyncOrchestratorService - Execution Flow", async (t) => {
           return Promise.resolve();
         },
         createRecords: () => Promise.resolve(),
-      } as unknown as OrchestratorArgs[2];
+      } as unknown as AirtableService;
 
       const orchestrator = new SyncOrchestratorService(
-        mockSupabase,
         mockSlack,
         mockAirtable,
         mockReferenceSync,
+        mockRefRepo,
+        mockAggregateRepo,
       );
 
-      // Execute the service
       await orchestrator.runAllJobs();
 
-      // Verify deduplication: 3 updates went in, but only 2 unique IDs should be sent out
       assertEquals(capturedUpdates.length, 2);
+      const deduped = capturedUpdates.find((u) => u.id === "recDuplicate1");
+      // Last-write-wins: the second update (value: 10) should survive.
+      assertEquals(deduped?.fields[AIRTABLE_FIELDS.ACTUAL_HOURS], 10);
 
-      // It should keep the LAST update value for the duplicated record
-      const duplicateRecord = capturedUpdates.find((u) =>
-        u.id === "recDuplicate1"
-      );
-      assertEquals(duplicateRecord?.fields[AIRTABLE_FIELDS.ACTUAL_HOURS], 10);
-
-      // Restore original function
       AirtableDiffCalculator.calculateDiffs = originalCalculateDiffs;
+    },
+  );
+
+  await t.step(
+    "2. Ghost Buster catches ROW_DOES_NOT_EXIST, nullifies the ID, and exits gracefully",
+    async () => {
+      let nullifiedId = "";
+
+      const mockRefRepoGhost = {
+        removeAirtableId: (id: string) => {
+          nullifiedId = id;
+          return Promise.resolve();
+        },
+      } as unknown as ReferenceRepository;
+
+      const mockFailingReferenceSync = {
+        syncAllReferences: (_au: string[], _ap: string[]) =>
+          Promise.reject(
+            new Error(
+              `Failed: {"error":{"type":"ROW_DOES_NOT_EXIST","message":"Record ID recDeadGhost12345 does not exist"}}`,
+            ),
+          ),
+        getOrBuildProjectAssignments: () =>
+          Promise.resolve(new Map<string, string>()),
+      } as unknown as ReferenceSyncService;
+
+      const orchestrator = new SyncOrchestratorService(
+        mockSlack,
+        {} as unknown as AirtableService,
+        mockFailingReferenceSync,
+        mockRefRepoGhost,
+        mockAggregateRepo,
+      );
+
+      const result = await orchestrator.runAllJobs();
+
+      assertEquals(result.details[0].includes("Sync aborted early"), true);
+      assertEquals(nullifiedId, "recDeadGhost12345");
+    },
+  );
+
+  await t.step(
+    "3. Ghost Buster ignores unrelated errors and re-throws them",
+    async () => {
+      const mockFailingReferenceSync = {
+        syncAllReferences: (_au: string[], _ap: string[]) =>
+          Promise.reject(
+            new Error(
+              `Failed: {"error":{"type":"INVALID_PERMISSIONS","message":"Cannot modify recSafeRecord1234"}}`,
+            ),
+          ),
+        getOrBuildProjectAssignments: () =>
+          Promise.resolve(new Map<string, string>()),
+      } as unknown as ReferenceSyncService;
+
+      const orchestrator = new SyncOrchestratorService(
+        mockSlack,
+        {} as unknown as AirtableService,
+        mockFailingReferenceSync,
+        mockRefRepo,
+        mockAggregateRepo,
+      );
+
+      await assertRejects(
+        () => orchestrator.runAllJobs(),
+        Error,
+        "INVALID_PERMISSIONS",
+      );
     },
   );
 });

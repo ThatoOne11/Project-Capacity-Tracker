@@ -1,16 +1,39 @@
-export type SlackBlock = {
-    type: string;
-    text?: {
-        type: string;
-        text: string;
-        emoji?: boolean;
-    };
-    fields?: {
-        type: string;
-        text: string;
-    }[];
-    elements?: unknown[];
+type SlackTextObject = {
+    type: "plain_text" | "mrkdwn";
+    text: string;
+    emoji?: boolean;
 };
+
+type SlackFieldObject = {
+    type: "mrkdwn" | "plain_text";
+    text: string;
+};
+
+type SlackHeaderBlock = {
+    type: "header";
+    text: SlackTextObject;
+};
+
+type SlackSectionBlock = {
+    type: "section";
+    text?: SlackTextObject;
+    fields?: SlackFieldObject[];
+};
+
+type SlackContextBlock = {
+    type: "context";
+    elements: SlackFieldObject[];
+};
+
+type SlackDividerBlock = {
+    type: "divider";
+};
+
+export type SlackBlock =
+    | SlackHeaderBlock
+    | SlackSectionBlock
+    | SlackContextBlock
+    | SlackDividerBlock;
 
 export type SlackPayload = {
     text: string;

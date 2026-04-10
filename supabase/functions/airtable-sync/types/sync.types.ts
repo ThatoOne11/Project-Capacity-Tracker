@@ -11,8 +11,3 @@ export type ViewRow = {
   user_name: string | null;
   project_name: string | null;
 };
-
-export type ReferenceRecord = {
-  id: string;
-  name: string;
-};

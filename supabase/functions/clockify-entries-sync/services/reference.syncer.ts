@@ -26,7 +26,8 @@ export class ReferenceSyncer {
 
     // Logging
     const totalChanges = stats.newUsers.length + stats.renamedUsers.length +
-      stats.newProjects.length;
+      stats.newProjects.length + stats.newClients.length;
+
     if (totalChanges > 0) {
       console.log(`Reference Changes detected: ${totalChanges}`);
     }

@@ -1,5 +1,6 @@
 import { z } from "npm:zod";
 import { SyncStrategy } from "../constants/sync.consts.ts";
+import type { SupabaseViewName } from "../../_shared/constants/supabase.constants.ts";
 
 export const AirtableRecordSchema = z.object({
   id: z.string(),
@@ -10,6 +11,7 @@ export const AirtableResponseSchema = z.object({
   records: z.array(AirtableRecordSchema).optional(),
   offset: z.string().optional(),
 });
+
 export type AirtableRecord = z.infer<typeof AirtableRecordSchema>;
 
 export type AirtableUpdate = {
@@ -30,7 +32,7 @@ export type SyncStats = {
 
 export type SyncJob = {
   name: string;
-  sourceView: string;
+  sourceView: SupabaseViewName;
   destinationTableId: string;
   allowInserts: boolean;
   strategy: SyncStrategy;

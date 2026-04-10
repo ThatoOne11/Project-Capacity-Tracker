@@ -10,9 +10,10 @@ import {
   ClockifyUser,
   ClockifyUserSchema,
 } from "../types/clockify.types.ts";
+import { fetchWithBackoff } from "../utils/api.utils.ts";
 
 export class ClockifyService {
-  private readonly baseUrl = ApiConstants.CLOCKIFY_BASE_URL;
+  private readonly baseUrl: string = ApiConstants.CLOCKIFY_BASE_URL;
   private readonly headers: HeadersInit;
 
   constructor(apiKey: string, private readonly workspaceId: string) {
@@ -38,29 +39,32 @@ export class ClockifyService {
     userId: string,
     start: string,
     page: number,
-    pageSize = 50,
+    pageSize: number = ApiConstants.CLOCKIFY_PAGE_SIZE_BACKFILL,
   ): Promise<ClockifyTimeEntry[]> {
-    const query = `start=${start}&page=${page}&page-size=${pageSize}`;
+    const params = new URLSearchParams({
+      start,
+      page: page.toString(),
+      "page-size": pageSize.toString(),
+    });
+
     const data = await this.get(
-      `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${query}`,
+      `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params}`,
     );
     return z.array(ClockifyTimeEntrySchema).parse(data);
   }
 
-  // Fetches entries within a time window for a specific user.
-  // Hydrated=true ensures we get project names even if they are new.
   // Fetches ALL entries within a time window (handles pagination automatically)
+  // Hydrated=true ensures we get project names even if they are new.
   async fetchRecentUserEntries(
     userId: string,
     start: string,
     end?: string,
   ): Promise<ClockifyTimeEntry[]> {
+    const pageSize = ApiConstants.CLOCKIFY_PAGE_SIZE_SYNC;
     let page = 1;
-    const pageSize = 200;
     const allEntries: ClockifyTimeEntry[] = [];
-    let hasMore = true;
 
-    while (hasMore) {
+    while (true) {
       const params = new URLSearchParams({
         start,
         hydrated: "true",
@@ -71,30 +75,30 @@ export class ClockifyService {
       if (end) params.append("end", end);
 
       const response = await this.get(
-        `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params.toString()}`,
+        `/workspaces/${this.workspaceId}/user/${userId}/time-entries?${params}`,
       );
 
-      const parsedChunk = z.array(ClockifyTimeEntrySchema).parse(response);
-      allEntries.push(...parsedChunk);
+      const chunk = z.array(ClockifyTimeEntrySchema).parse(response);
+      allEntries.push(...chunk);
 
-      if (parsedChunk.length < pageSize) {
-        hasMore = false;
-      } else {
-        page++;
-      }
+      if (chunk.length < pageSize) break;
+
+      page++;
     }
 
     return allEntries;
   }
 
   private async get(endpoint: string): Promise<unknown> {
-    const res = await fetch(`${this.baseUrl}${endpoint}`, {
+    const res = await fetchWithBackoff(`${this.baseUrl}${endpoint}`, {
       headers: this.headers,
     });
+
     if (!res.ok) {
       const errorText = await res.text();
       throw new Error(`Clockify API Error [${res.status}]: ${errorText}`);
     }
+
     return res.json();
   }
 }

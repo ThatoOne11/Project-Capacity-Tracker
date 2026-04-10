@@ -9,3 +9,10 @@ export const SupabaseViews = {
     MONTHLY_AGGREGATES: "monthly_aggregates_view",
     PAYROLL_AGGREGATES: "payroll_aggregates_view",
 } as const;
+
+export type SupabaseViewName = typeof SupabaseViews[keyof typeof SupabaseViews];
+
+export type ReferenceTableName =
+    | typeof SupabaseTables.CLOCKIFY_USERS
+    | typeof SupabaseTables.CLOCKIFY_PROJECTS
+    | typeof SupabaseTables.CLOCKIFY_CLIENTS;
