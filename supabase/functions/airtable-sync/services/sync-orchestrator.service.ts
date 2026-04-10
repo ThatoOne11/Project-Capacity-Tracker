@@ -8,12 +8,9 @@ import { AggregateRow } from "../types/sync.types.ts";
 import { AIRTABLE_CONFIG } from "../../_shared/config.ts";
 import { SyncStrategies } from "../constants/sync.consts.ts";
 import { SupabaseViews } from "../../_shared/constants/supabase.constants.ts";
-import { AirtableUpdate, SyncJob, SyncStats } from "../types/airtable.types.ts";
-import {
-  AIRTABLE_RECORD_ID_PATTERN,
-  GHOST_ERROR_TYPES,
-} from "../constants/airtable.constants.ts";
+import { SyncJob, SyncStats } from "../types/airtable.types.ts";
 import { toSafeError } from "../../_shared/utils/error.utils.ts";
+import { OrchestratorHelpers } from "../helpers/orchestrator.helpers.ts";
 
 export class SyncOrchestratorService {
   constructor(
@@ -66,36 +63,40 @@ export class SyncOrchestratorService {
       }
     } catch (err: unknown) {
       const error = toSafeError(err);
-      const isGhostError = GHOST_ERROR_TYPES.some((type) =>
-        error.message.includes(type)
+
+      const ghostResult = await this.handleGhostError(
+        error,
+        totalStats,
+        logMessages,
       );
+      if (ghostResult) return ghostResult;
 
-      if (isGhostError) {
-        const match = error.message.match(AIRTABLE_RECORD_ID_PATTERN);
-        const badId = match?.[0];
-
-        if (badId) {
-          console.warn(
-            `[GhostBuster] Detected deleted Airtable ID: ${badId}. Nullifying in Supabase...`,
-          );
-
-          await this.refRepo.removeAirtableId(badId);
-
-          await this.slack.sendGhostBusterReport(badId);
-          logMessages.push(
-            `[GhostBuster] Sync aborted early to heal deleted record ${badId}.`,
-          );
-
-          // Return gracefully - the next cron run will fix it naturally.
-          return { stats: totalStats, details: logMessages };
-        }
-      }
-
-      // If it's a different kind of error, rethrow it to trigger the Slack alert
       throw error;
     }
 
     return { stats: totalStats, details: logMessages };
+  }
+
+  private async handleGhostError(
+    error: Error,
+    totalStats: SyncStats,
+    logMessages: string[],
+  ): Promise<{ stats: SyncStats; details: string[] } | null> {
+    const badId = OrchestratorHelpers.extractGhostRecordId(error);
+
+    if (badId) {
+      console.warn(
+        `[GhostBuster] Detected deleted Airtable ID: ${badId}. Nullifying in Supabase...`,
+      );
+      await this.refRepo.removeAirtableId(badId);
+      await this.slack.sendGhostBusterReport(badId);
+      logMessages.push(
+        `[GhostBuster] Sync aborted early to heal deleted record ${badId}.`,
+      );
+      return { stats: totalStats, details: logMessages };
+    }
+
+    return null;
   }
 
   private async executeJob(
@@ -108,9 +109,7 @@ export class SyncOrchestratorService {
 
     if (job.strategy === SyncStrategies.ASSIGNMENT && job.allowInserts) {
       projectAssignmentMap = await this.referenceSync
-        .getOrBuildProjectAssignments(
-          sourceData,
-        );
+        .getOrBuildProjectAssignments(sourceData);
     }
 
     const destinationRecords = await this.airtable.fetchRecords(
@@ -125,13 +124,7 @@ export class SyncOrchestratorService {
       projectAssignmentMap,
     );
 
-    // Deduplicate updates to prevent Airtable API batch rejection.
-    // Airtable crashes if a batch contains multiple operations targeting the exact same record ID.
-    const uniqueUpdatesMap = new Map<string, AirtableUpdate>();
-    for (const update of updates) {
-      uniqueUpdatesMap.set(update.id, update);
-    }
-    const cleanUpdates = Array.from(uniqueUpdatesMap.values());
+    const cleanUpdates = OrchestratorHelpers.deduplicateUpdates(updates);
 
     if (inserts.length > 0) {
       await this.airtable.createRecords(job.destinationTableId, inserts);
