@@ -175,6 +175,8 @@ export class ReferenceRepository {
     }
 
     async fetchProjectsByNames(names: string[]): Promise<ProjectRow[]> {
+        if (names.length === 0) return [];
+
         const { data, error } = await this.client
             .from(SupabaseTables.CLOCKIFY_PROJECTS)
             .select("id, name, client_id, airtable_id")
@@ -191,6 +193,8 @@ export class ReferenceRepository {
     async fetchMissingClientsByIds(
         clientIds: string[],
     ): Promise<ReferenceRecord[]> {
+        if (clientIds.length === 0) return [];
+
         const { data, error } = await this.client
             .from(SupabaseTables.CLOCKIFY_CLIENTS)
             .select("id, name")
@@ -210,6 +214,8 @@ export class ReferenceRepository {
         table: ReferenceTableName,
         names: string[],
     ): Promise<ReferenceRecord[]> {
+        if (names.length === 0) return [];
+
         const { data, error } = await this.client
             .from(table)
             .select("id, name")
