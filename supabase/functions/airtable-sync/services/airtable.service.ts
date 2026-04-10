@@ -48,7 +48,7 @@ export class AirtableService {
 
       if (offset) params.append("offset", offset);
 
-      const url = `${this.baseUrl}/${this.baseId}/${tableId}?${params}`;
+      const url = `${this.baseUrl}/${encodeURIComponent(this.baseId)}/${encodeURIComponent(tableId)}?${params}`;
       const res = await fetchWithBackoff(url, { headers: this.headers });
 
       if (!res.ok) {
