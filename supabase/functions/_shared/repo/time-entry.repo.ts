@@ -1,7 +1,14 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SupabaseTables } from "../constants/supabase.constants.ts";
+import {
+    SupabaseRpcs,
+    SupabaseTables,
+} from "../constants/supabase.constants.ts";
 import { ClockifyTimeEntry } from "../types/clockify.types.ts";
-import { SyncResult, TimeEntryRow } from "../types/sync.types.ts";
+import {
+    SyncResult,
+    TimeEntryRow,
+    UnassignedTimeRow,
+} from "../types/sync.types.ts";
 
 export class TimeEntryRepository {
     constructor(private readonly client: SupabaseClient) {}
@@ -174,5 +181,25 @@ export class TimeEntryRepository {
                     .map((p) => [p.clockify_id, p.id]),
             ),
         };
+    }
+
+    // Fetches all users who have logged time without assigning it to a project
+    async getUnassignedTimeSummaries(
+        targetDate: string,
+    ): Promise<UnassignedTimeRow[]> {
+        const { data, error } = await this.client.rpc(
+            SupabaseRpcs.GET_UNASSIGNED_TIME,
+            {
+                p_date: targetDate,
+            },
+        );
+
+        if (error) {
+            throw new Error(
+                `DB Error (getUnassignedTimeSummaries): ${error.message}`,
+            );
+        }
+
+        return data as UnassignedTimeRow[];
     }
 }

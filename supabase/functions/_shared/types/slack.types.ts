@@ -39,3 +39,9 @@ export type SlackPayload = {
     text: string;
     blocks?: SlackBlock[];
 };
+
+export type CleanSlackUser = {
+    id: string;
+    name: string;
+    email?: string;
+};
