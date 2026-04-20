@@ -148,7 +148,7 @@ export class ReferenceRepository {
     async fetchActiveUsers(): Promise<DbUser[]> {
         const { data, error } = await this.client
             .from(SupabaseTables.CLOCKIFY_USERS)
-            .select("id, clockify_id, name");
+            .select("id, clockify_id, name, email, slack_id");
 
         if (error) {
             throw new Error(`DB Error (fetchActiveUsers): ${error.message}`);
@@ -160,17 +160,17 @@ export class ReferenceRepository {
     async fetchUsersByClockifyId(clockifyId?: string): Promise<DbUser[]> {
         const query = this.client
             .from(SupabaseTables.CLOCKIFY_USERS)
-            .select("id, clockify_id, name");
+            .select("id, clockify_id, name, email, slack_id");
 
         const { data, error } = clockifyId
             ? await query.eq("clockify_id", clockifyId)
             : await query;
-
         if (error) {
             throw new Error(
                 `DB Error (fetchUsersByClockifyId): ${error.message}`,
             );
         }
+
         return (data ?? []) as DbUser[];
     }
 
@@ -267,5 +267,15 @@ export class ReferenceRepository {
                 }
             }),
         );
+    }
+
+    // Permanently caches a resolved Slack ID to prevent redundant API lookups
+    async saveSlackId(userId: string, slackId: string): Promise<void> {
+        const { error } = await this.client
+            .from(SupabaseTables.CLOCKIFY_USERS)
+            .update({ slack_id: slackId })
+            .eq("id", userId);
+
+        if (error) throw new Error(`DB Error (saveSlackId): ${error.message}`);
     }
 }

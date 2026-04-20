@@ -39,6 +39,8 @@ export type DbUser = {
     id: string;
     clockify_id: string;
     name: string;
+    email: string | null;
+    slack_id: string | null;
 };
 
 // Generic shape for any reference table row (users, projects, clients).
@@ -53,4 +55,17 @@ export type ProjectRow = {
     name: string;
     client_id: string | null;
     airtable_id: string | null;
+};
+
+export type UnassignedTimeRow = {
+    user_id: string;
+    user_name: string;
+    user_email: string | null;
+    slack_id: string | null;
+    unassigned_hours: number;
+    unassigned_entries: Array<{
+        date: string;
+        description: string;
+        duration_hours: number;
+    }>;
 };
