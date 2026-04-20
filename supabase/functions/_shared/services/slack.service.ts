@@ -1,5 +1,9 @@
 import { SlackClient } from "../clients/slack.client.ts";
-import { SlackPayload } from "../types/slack.types.ts";
+import {
+    CleanSlackUser,
+    SlackPayload,
+    SlackUsersListResponseSchema,
+} from "../types/slack.types.ts";
 import { SyncReportStats } from "../types/sync.types.ts";
 
 type SlackMessageConfig = {
@@ -128,6 +132,60 @@ export class SlackService {
                 `*Status:* ${statusLabel}   |   *Duration:* ${stats.durationSeconds}s`,
             bodySections: [changesText, cleanupText],
             footer: "System is now 100% in sync with Clockify.",
+        }));
+    }
+
+    async fetchWorkspaceMembers(): Promise<CleanSlackUser[]> {
+        const payload = await this.client.getWorkspaceMembers();
+        const parsed = SlackUsersListResponseSchema.parse(payload);
+
+        if (!parsed.ok) {
+            throw new Error(`Slack API Logic Error: ${parsed.error}`);
+        }
+
+        return (parsed.members ?? [])
+            .filter((m) => !m.deleted && !m.is_bot && m.id !== "USLACKBOT")
+            .map((m) => ({
+                id: m.id,
+                name: m.real_name ?? m.name,
+                email: m.profile?.email,
+            }));
+    }
+
+    async sendUnassignedNudgeDM(
+        slackUserId: string,
+        hours: number,
+        dateStr: string,
+    ): Promise<void> {
+        await this.client.postDirectMessage(
+            slackUserId,
+            this.buildPayload({
+                title: "Unassigned Time ⚠️",
+                contextBar: `*Date:* ${dateStr}`,
+                bodySections: [
+                    `Hi there! You have *${hours} hours* of time logged today that isn't assigned to a project.\n\nPlease update your Clockify entries before the end of the day so our capacity reports remain accurate.`,
+                ],
+                footer:
+                    "This is an automated nudge. Reply to your PM if you need help.",
+            }),
+        );
+    }
+
+    async sendUnmappedUsersAlert(
+        unmappedUsers: Array<{ name: string; email: string | null }>,
+    ): Promise<void> {
+        const userList = unmappedUsers.map((u) =>
+            `• ${u.name} (${u.email || "No Email"})`
+        ).join("\n");
+
+        await this.client.post(this.buildPayload({
+            title: "Project Capacity Tracker - Identity Mismatch 🚨",
+            contextBar: `*Action Required*`,
+            bodySections: [
+                `I tried to send unassigned-time nudges, but I couldn't automatically find the following Clockify users in Slack:\n\n${userList}\n\n*Please manually add their Slack IDs to the \`clockify_users\` table.*`,
+            ],
+            footer:
+                "Once mapped, they will automatically receive nudges in the future.",
         }));
     }
 }

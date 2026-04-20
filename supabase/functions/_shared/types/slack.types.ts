@@ -1,3 +1,4 @@
+import { z } from "npm:zod";
 type SlackTextObject = {
     type: "plain_text" | "mrkdwn";
     text: string;
@@ -45,3 +46,18 @@ export type CleanSlackUser = {
     name: string;
     email?: string;
 };
+
+export const SlackMemberSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    real_name: z.string().optional(),
+    deleted: z.boolean().optional(),
+    is_bot: z.boolean().optional(),
+    profile: z.object({ email: z.string().optional() }).optional(),
+}).loose();
+
+export const SlackUsersListResponseSchema = z.object({
+    ok: z.boolean(),
+    members: z.array(SlackMemberSchema).optional(),
+    error: z.string().optional(),
+});

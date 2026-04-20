@@ -22,6 +22,7 @@ type AirtableConfig = {
 
 type SlackConfig = {
     webhookUrl: string;
+    botToken: string;
 };
 
 export const SUPABASE_CONFIG: SupabaseConfig = {
@@ -52,4 +53,5 @@ export const AIRTABLE_CONFIG: AirtableConfig = {
 
 export const SLACK_CONFIG: SlackConfig = {
     webhookUrl: Deno.env.get("SLACK_WEBHOOK_URL")!,
+    botToken: Deno.env.get("SLACK_BOT_TOKEN")!,
 };
