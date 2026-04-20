@@ -56,7 +56,9 @@ export class SlackClient {
         slackUserId: string,
         payload: SlackPayload,
     ): Promise<void> {
-        if (!SLACK_CONFIG.botToken) return;
+        if (!SLACK_CONFIG.botToken) {
+            throw new Error("SLACK_BOT_TOKEN is missing.");
+        }
 
         const response = await fetchWithBackoff(
             `${ApiConstants.SLACK_BASE_URL}/chat.postMessage`,

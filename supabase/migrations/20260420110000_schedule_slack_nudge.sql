@@ -8,10 +8,10 @@
 --   select vault.create_secret('http://host.docker.internal:54321/functions/v1/slack-bot', 'slack_bot_function_url');
 -- =============================================================================
 
--- Schedule: Mon–Fri every hour between 6 AM and 6 PM SAST
+-- Schedule: Mon–Fri every hour between 8 AM and 3 PM SAST
 SELECT cron.schedule(
     'unassigned-time-nudge',
-    '0 6-18 * * 1-5',
+    '0 6-13 * * 1-5',
     $$
     SELECT net.http_post(
         url:=(
