@@ -8,7 +8,7 @@ import { SyncReportStats } from "../types/sync.types.ts";
 
 type SlackMessageConfig = {
     title: string;
-    contextBar: string;
+    contextBar?: string;
     bodySections: string[];
     footer: string;
 };
@@ -28,10 +28,15 @@ export class SlackService {
                         emoji: true,
                     },
                 },
-                {
-                    type: "context",
-                    elements: [{ type: "mrkdwn", text: config.contextBar }],
-                },
+                ...(config.contextBar
+                    ? [{
+                        type: "context" as const,
+                        elements: [{
+                            type: "mrkdwn" as const,
+                            text: config.contextBar,
+                        }],
+                    }]
+                    : []),
                 { type: "divider" },
                 ...config.bodySections.map((text) => ({
                     type: "section" as const,
@@ -154,19 +159,29 @@ export class SlackService {
 
     async sendUnassignedNudgeDM(
         slackUserId: string,
+        firstName: string,
         hours: number,
-        dateStr: string,
+        entries: Array<
+            { date: string; description: string; duration_hours: number }
+        >,
     ): Promise<void> {
+        const entriesList = entries
+            .map((e) =>
+                `• *${e.date}*: ${e.description} (${e.duration_hours}h)`
+            )
+            .join("\n");
+
         await this.client.postDirectMessage(
             slackUserId,
             this.buildPayload({
-                title: "Unassigned Time ⚠️",
-                contextBar: `*Date:* ${dateStr}`,
+                title: "You have unassigned Clockify time 👀",
                 bodySections: [
-                    `Hi there! You have *${hours} hours* of time logged today that isn't assigned to a project.\n\nPlease update your Clockify entries before the end of the day so our capacity reports remain accurate.`,
+                    `Hi ${firstName}! You have logged ${hours} hours that isn't assigned to a project:`,
+                    `\n${entriesList}`,
+                    `Please update your Clockify so your hours remain accurate 😄.`,
                 ],
                 footer:
-                    "This is an automated nudge. Reply to your PM if you need help.",
+                    "This is an automated message. DM Ross if you need help.",
             }),
         );
     }
@@ -179,13 +194,13 @@ export class SlackService {
         ).join("\n");
 
         await this.client.post(this.buildPayload({
-            title: "Project Capacity Tracker - Identity Mismatch 🚨",
-            contextBar: `*Action Required*`,
+            title: "Slack Identity Mismatch 🚨",
             bodySections: [
-                `I tried to send unassigned-time nudges, but I couldn't automatically find the following Clockify users in Slack:\n\n${userList}\n\n*Please manually add their Slack IDs to the \`clockify_users\` table.*`,
+                `Yo! I couldn't find the following Clockify user/s in Slack to send their reminders:`,
+                userList,
+                `Please manually add their Slack IDs to the \`clockify_users\` table.`,
             ],
-            footer:
-                "Once mapped, they will automatically receive nudges in the future.",
+            footer: "This is an automated message. Good luck.",
         }));
     }
 }

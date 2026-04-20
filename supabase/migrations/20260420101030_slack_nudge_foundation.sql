@@ -9,7 +9,8 @@ RETURNS TABLE (
     user_name TEXT,
     user_email TEXT,
     slack_id TEXT,
-    unassigned_hours NUMERIC
+    unassigned_hours NUMERIC,
+    unassigned_entries JSON
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -32,7 +33,17 @@ BEGIN
         u.name AS user_name,
         u.email AS user_email,
         u.slack_id AS slack_id,
-        ROUND((EXTRACT(EPOCH FROM SUM(t.duration)) / 3600)::NUMERIC, 2) AS unassigned_hours
+        ROUND((EXTRACT(EPOCH FROM SUM(t.duration)) / 3600)::NUMERIC, 2) AS unassigned_hours,
+        
+        -- Aggregate the specific entries into a structured JSON array
+        json_agg(
+            json_build_object(
+                'date', TO_CHAR(t.start_time AT TIME ZONE 'Africa/Johannesburg', 'YYYY-MM-DD'),
+                'description', COALESCE(t.description, '(No description provided)'),
+                'duration_hours', ROUND((EXTRACT(EPOCH FROM t.duration) / 3600)::NUMERIC, 2)
+            )
+        ) AS unassigned_entries
+
     FROM clockify_time_entries t
     JOIN clockify_users u ON t.user_id = u.id
     LEFT JOIN clockify_projects p ON t.project_id = p.id

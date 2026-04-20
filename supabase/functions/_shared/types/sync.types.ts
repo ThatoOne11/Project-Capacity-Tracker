@@ -63,4 +63,9 @@ export type UnassignedTimeRow = {
     user_email: string | null;
     slack_id: string | null;
     unassigned_hours: number;
+    unassigned_entries: Array<{
+        date: string;
+        description: string;
+        duration_hours: number;
+    }>;
 };

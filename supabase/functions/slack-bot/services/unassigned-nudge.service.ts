@@ -32,7 +32,7 @@ export class UnassignedNudgeService {
     const slackUsers = await this.slack.fetchWorkspaceMembers();
     const unmatchedUsers: UnassignedTimeRow[] = [];
 
-    const CONCURRENCY_LIMIT = 5; // Chunk API calls to prevent rate limits
+    const CONCURRENCY_LIMIT = 5;
     for (let i = 0; i < offenders.length; i += CONCURRENCY_LIMIT) {
       const chunk = offenders.slice(i, i + CONCURRENCY_LIMIT);
 
@@ -50,7 +50,6 @@ export class UnassignedNudgeService {
             return;
           }
 
-          // Cache the ID if this was a new auto-discovery!
           if (!row.slack_id) {
             console.log(
               `[UnassignedNudge] Auto-Discovered Slack ID for ${row.user_name}. Caching...`,
@@ -59,16 +58,19 @@ export class UnassignedNudgeService {
           }
 
           console.log(`[UnassignedNudge] Sending DM to ${row.user_name}...`);
+
+          const firstName = row.user_name.split(" ")[0];
+
           await this.slack.sendUnassignedNudgeDM(
             slackId,
+            firstName,
             row.unassigned_hours,
-            targetDate,
+            row.unassigned_entries,
           );
         }),
       );
     }
 
-    // Graceful Admin Fallback
     if (unmatchedUsers.length > 0) {
       console.warn(
         `[UnassignedNudge] Could not map ${unmatchedUsers.length} user(s). Alerting Admin.`,
@@ -78,6 +80,6 @@ export class UnassignedNudgeService {
       );
     }
 
-    return offenders.length - unmatchedUsers.length; // Return successfully nudged count
+    return offenders.length - unmatchedUsers.length;
   }
 }
