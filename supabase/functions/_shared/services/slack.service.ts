@@ -1,10 +1,14 @@
 import { SlackClient } from "../clients/slack.client.ts";
-import { SlackPayload } from "../types/slack.types.ts";
+import {
+    CleanSlackUser,
+    SlackPayload,
+    SlackUsersListResponseSchema,
+} from "../types/slack.types.ts";
 import { SyncReportStats } from "../types/sync.types.ts";
 
 type SlackMessageConfig = {
     title: string;
-    contextBar: string;
+    contextBar?: string;
     bodySections: string[];
     footer: string;
 };
@@ -24,10 +28,15 @@ export class SlackService {
                         emoji: true,
                     },
                 },
-                {
-                    type: "context",
-                    elements: [{ type: "mrkdwn", text: config.contextBar }],
-                },
+                ...(config.contextBar
+                    ? [{
+                        type: "context" as const,
+                        elements: [{
+                            type: "mrkdwn" as const,
+                            text: config.contextBar,
+                        }],
+                    }]
+                    : []),
                 { type: "divider" },
                 ...config.bodySections.map((text) => ({
                     type: "section" as const,
@@ -128,6 +137,70 @@ export class SlackService {
                 `*Status:* ${statusLabel}   |   *Duration:* ${stats.durationSeconds}s`,
             bodySections: [changesText, cleanupText],
             footer: "System is now 100% in sync with Clockify.",
+        }));
+    }
+
+    async fetchWorkspaceMembers(): Promise<CleanSlackUser[]> {
+        const payload = await this.client.getWorkspaceMembers();
+        const parsed = SlackUsersListResponseSchema.parse(payload);
+
+        if (!parsed.ok) {
+            throw new Error(`Slack API Logic Error: ${parsed.error}`);
+        }
+
+        return (parsed.members ?? [])
+            .filter((m) => !m.deleted && !m.is_bot && m.id !== "USLACKBOT")
+            .map((m) => ({
+                id: m.id,
+                name: m.real_name ?? m.name,
+                email: m.profile?.email,
+            }));
+    }
+
+    async sendUnassignedNudgeDM(
+        slackUserId: string,
+        firstName: string,
+        hours: number,
+        entries: Array<
+            { date: string; description: string; duration_hours: number }
+        >,
+    ): Promise<void> {
+        const entriesList = entries
+            .map((e) =>
+                `• *${e.date}*: ${e.description} (${e.duration_hours}h)`
+            )
+            .join("\n");
+
+        await this.client.postDirectMessage(
+            slackUserId,
+            this.buildPayload({
+                title: "You have unassigned Clockify time 👀",
+                bodySections: [
+                    `Hi ${firstName}! You have logged ${hours} hours that isn't assigned to a project:`,
+                    `\n${entriesList}`,
+                    `Please update your Clockify so your hours remain accurate 😄.`,
+                ],
+                footer:
+                    "This is an automated message. DM Ross if you need help.",
+            }),
+        );
+    }
+
+    async sendUnmappedUsersAlert(
+        unmappedUsers: Array<{ name: string; email: string | null }>,
+    ): Promise<void> {
+        const userList = unmappedUsers.map((u) =>
+            `• ${u.name} (${u.email || "No Email"})`
+        ).join("\n");
+
+        await this.client.post(this.buildPayload({
+            title: "Slack Identity Mismatch 🚨",
+            bodySections: [
+                `Yo! I couldn't find the following Clockify user/s in Slack to send their reminders:`,
+                userList,
+                `Please manually add their Slack IDs to the \`clockify_users\` table.`,
+            ],
+            footer: "This is an automated message. Good luck.",
         }));
     }
 }

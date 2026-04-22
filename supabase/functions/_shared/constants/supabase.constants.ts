@@ -10,6 +10,10 @@ export const SupabaseViews = {
     PAYROLL_AGGREGATES: "payroll_aggregates_view",
 } as const;
 
+export const SupabaseRpcs = {
+    GET_UNASSIGNED_TIME: "get_unassigned_time",
+} as const;
+
 export type SupabaseViewName = typeof SupabaseViews[keyof typeof SupabaseViews];
 
 export type ReferenceTableName =
